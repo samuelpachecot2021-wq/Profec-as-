@@ -24,14 +24,15 @@ test("detecta idiomas", () => {
   assert.equal(detectLanguage("أعلنت الحكومة أن الاقتصاد سينمو هذا العام بشكل كبير"), "ar");
 });
 
-test("divide el guion en escenas de 4 a 8 segundos", () => {
+test("divide el guion en escenas de 3 a 5 segundos y la primera dura como máximo ~3 s", () => {
   const text = Array.from({ length: 40 }, (_, i) => `Esta es la frase número ${i} del guion, con varias palabras para narrar...`).join(" ");
   const scenes = splitScenes(text, 1);
   const wps = 140 / 60;
-  for (const s of scenes.slice(0, -1)) {
-    const secs = s.split(/\s+/).length / wps;
-    assert.ok(secs >= 3 && secs <= 8.6, `escena de ${secs.toFixed(1)} s: ${s}`);
-  }
+  const secs = (s: string) => s.split(/\s+/).length / wps;
+  assert.ok(secs(scenes[0]) <= 3.3, `primera escena de ${secs(scenes[0]).toFixed(1)} s`);
+  for (const s of scenes.slice(1, -1)) assert.ok(secs(s) >= 1.7 && secs(s) <= 5.2, `escena de ${secs(s).toFixed(1)} s: ${s}`);
+  const avg = scenes.reduce((a, s) => a + secs(s), 0) / scenes.length;
+  assert.ok(avg >= 2.5 && avg <= 5, `promedio ${avg.toFixed(1)} s`);
   assert.equal(scenes.join(" ").split(/\s+/).length, text.split(/\s+/).length, "no se pierde texto");
   const blocks = groupBlocks(scenes);
   assert.deepEqual(blocks.flat(), scenes.map((_, i) => i));

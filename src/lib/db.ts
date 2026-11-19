@@ -45,6 +45,7 @@ function open() {
       query TEXT,
       overlay TEXT,
       keywords TEXT,
+      queries TEXT,
       asset_id INTEGER,
       locked INTEGER NOT NULL DEFAULT 0
     );
@@ -90,6 +91,9 @@ function open() {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+  // Migraciones para bases de datos creadas con versiones anteriores (no se pierde nada).
+  const cols = (db.prepare("PRAGMA table_info(scenes)").all() as { name: string }[]).map((c) => c.name);
+  if (!cols.includes("queries")) db.exec("ALTER TABLE scenes ADD COLUMN queries TEXT");
   return db;
 }
 

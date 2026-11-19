@@ -75,14 +75,14 @@ Nunca gasta más del 20 % sobre lo autorizado y se detiene al llegar al **presup
   y **cierre evangelístico** centrado en Jesucristo; en un solo párrafo y editable. No inventa noticias ni citas, distingue
   **hechos** de **interpretación profética** y usa «**arrebatamiento**» en lugar de «rapto».
 * **Voz en off** predeterminada: **Brian de ElevenLabs** (velocidad 0,95), con alternativas gratuitas (*Jorge*, Piper), vista previa y opción de subir su propia narración.
-* **Imágenes y clips** por escena (Pexels, Pixabay, Unsplash, Wikimedia Commons, NASA), priorizando video, sin repeticiones,
+* **Imágenes y clips** elegidos tras analizar el significado de cada fragmento en el contexto de todo el guion: 3 búsquedas en inglés por escena (de específica a general), prioridad a metraje real, cinematográfico y documental (Pixabay solo «film»), descarte automático de adornos navideños, cráneos, caricaturas, ilustraciones y animaciones tecnológicas fuera de lugar, sin repetir clips en el mismo video, con **fuente, autor y licencia** registrados. Las imágenes con IA se rotulan como ilustrativas.
   con **fuente, autor y licencia** registrados y añadidos a la descripción. Las imágenes con IA se rotulan como ilustrativas.
 * **Edición:** efecto Ken Burns (acercamientos, alejamientos, paneos), transiciones cinematográficas y de luz, partículas,
   corrección de color, viñeta, rótulos de **versículos**, **titulares**, **mapas** con marcador animado, etiqueta de **interpretación profética**.
-  Cambio de escena cada 4–8 segundos sincronizado con la voz.
+  Cambio de imagen cada 3–5 segundos según el ritmo real de la narración; los primeros 3 segundos llevan destello de luz, acercamiento rápido y título de impacto.
 * **Música** instrumental original (sintetizada por la app, sin derechos de terceros) en 8 estilos, con **bajada automática de volumen** bajo la voz.
   Puede subir sus propias pistas (p. ej. de la Biblioteca de audio de YouTube) en *Ajustes*.
-* **Subtítulos** blancos con borde negro y **palabras clave en amarillo**, posición configurable, **SRT** descargable y traducción opcional al inglés.
+* **Subtítulos** grandes, blancos con borde negro y **palabras clave en amarillo**, respetando las zonas seguras de Reels, TikTok y Shorts, posición configurable, **SRT** descargable y traducción opcional al inglés.
 * **Formatos** 16:9, 9:16, 4:5 y 1:1 en 720p, 1080p, 1440p y 4K · **MP4 H.264 + AAC**, sonido normalizado para YouTube (−14 LUFS).
 * **3 miniaturas** 1280×720 de alto contraste en rojo, amarillo, blanco, negro y dorado.
 * **YouTube:** 5 títulos (en MAYÚSCULAS y en estilo oración), 3 títulos de miniatura, descripción, 3 hashtags, palabras clave,

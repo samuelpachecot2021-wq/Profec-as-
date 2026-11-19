@@ -41,6 +41,7 @@ export type SceneRow = {
   query: string | null;
   overlay: string | null;
   keywords: string | null;
+  queries: string | null;
   asset_id: number | null;
   locked: number;
 };

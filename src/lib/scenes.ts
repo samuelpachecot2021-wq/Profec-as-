@@ -1,6 +1,7 @@
 import { findRefs, VERSES } from "./bible";
 import { activeProvider, llmJson } from "./llm";
 import { words } from "./util";
+import { heuristicQueries } from "./visual";
 
 export type Overlay =
   | { type: "verse"; ref: string; text?: string }
@@ -9,14 +10,51 @@ export type Overlay =
   | { type: "interpretation" }
   | { type: "info"; text: string };
 
-export type ScenePlan = { text: string; query: string; overlay: Overlay | null; keywords: string[] };
+export type ScenePlan = {
+  text: string;
+  query: string;
+  /** Búsquedas en inglés de la más específica a la más general. */
+  queries: string[];
+  /** Significado de la escena (resumen breve) usado para elegir el recurso. */
+  meaning?: string;
+  overlay: Overlay | null;
+  keywords: string[];
+};
 
-// ───────────── División en escenas (4–8 s cada una) ─────────────
+export type PlanResult = { scenes: ScenePlan[]; hookTitle: string | null };
+
+// ───────────── División en escenas (3–5 s cada una; la primera, máx. ~3 s) ─────────────
+
+const LINK_WORDS = new Set(["que", "de", "del", "en", "y", "e", "o", "a", "al", "con", "para", "por", "como", "la", "el", "los", "las", "un", "una", "sin", "sobre", "entre", "hasta", "donde", "cuando", "pero", "porque", "mientras", "aunque", "si"]);
+
+/** Corta un fragmento largo sin puntuación en partes equilibradas, antes de una palabra de enlace. */
+function balancedCut(text: string, maxW: number): string[] {
+  const w = words(text);
+  if (w.length <= maxW) return [text];
+  const parts = Math.ceil(w.length / maxW);
+  const size = w.length / parts;
+  const out: string[] = [];
+  let start = 0;
+  for (let p = 1; p < parts; p++) {
+    let cut = Math.round(size * p);
+    for (const d of [0, -1, 1, -2, 2]) {
+      const k = Math.round(size * p) + d;
+      if (k > start + 1 && k < w.length - 1 && ((LINK_WORDS.has(w[k].toLowerCase()) && !LINK_WORDS.has(w[k - 1].toLowerCase())) || /[,;:]$/.test(w[k - 1]))) {
+        cut = k;
+        break;
+      }
+    }
+    out.push(w.slice(start, cut).join(" "));
+    start = cut;
+  }
+  out.push(w.slice(start).join(" "));
+  return out;
+}
 
 export function splitScenes(script: string, speed = 1): string[] {
   const wps = (140 / 60) * speed; // palabras por segundo
-  const minW = Math.round(4 * wps);
-  const maxW = Math.round(8 * wps);
+  const minW = Math.round(3 * wps);
+  const maxW = Math.round(5 * wps);
   const sentences = script
     .replace(/\s+/g, " ")
     .split(/(?<=[.!?…])\s+/)
@@ -39,11 +77,7 @@ export function splitScenes(script: string, speed = 1): string[] {
         cur = part;
       } else cur = cand;
     }
-    if (cur) {
-      // último recurso: cortar por número de palabras
-      const w = words(cur);
-      for (let i = 0; i < w.length; i += maxW) pieces.push(w.slice(i, i + maxW).join(" "));
-    }
+    if (cur) pieces.push(...balancedCut(cur, maxW));
   }
 
   // une los fragmentos cortos
@@ -57,54 +91,22 @@ export function splitScenes(script: string, speed = 1): string[] {
     const tail = scenes.pop()!;
     scenes[scenes.length - 1] += ` ${tail}`;
   }
+  // Impacto inicial: el primer cambio de imagen llega antes de los 3 segundos.
+  const firstMax = Math.max(4, Math.round(2.8 * wps));
+  if (scenes.length && words(scenes[0]).length > firstMax) {
+    const w = words(scenes[0]);
+    let cut = firstMax;
+    for (let k = firstMax; k >= Math.max(3, firstMax - 3); k--) if (/[,;:…?!]$|\.\.\.$/.test(w[k - 1])) {
+      cut = k;
+      break;
+    }
+    const rest = w.slice(cut).join(" ");
+    // un resto muy corto se une a la escena siguiente (sin fragmentos de medio segundo)
+    if (words(rest).length < minW / 2 && scenes[1] && words(rest).length + words(scenes[1]).length <= maxW + 2) scenes.splice(0, 2, w.slice(0, cut).join(" "), `${rest} ${scenes[1]}`);
+    else scenes.splice(0, 1, w.slice(0, cut).join(" "), rest);
+  }
   return scenes;
 }
-
-// ───────────── Diccionario temático para búsquedas en bancos de imágenes ─────────────
-
-const QUERY_MAP: [RegExp, string][] = [
-  [/jerusal[eé]n|monte del templo|muro de los lamentos/i, "jerusalem old city"],
-  [/tercer templo|templo/i, "ancient temple jerusalem"],
-  [/israel/i, "israel landscape"],
-  [/gaza/i, "middle east city smoke"],
-  [/ir[aá]n/i, "iran tehran"],
-  [/rusia|kremlin|mosc[uú]/i, "moscow kremlin"],
-  [/ucrania/i, "ukraine war"],
-  [/china|pek[ií]n/i, "china city night"],
-  [/estados unidos|washington|casa blanca/i, "washington capitol"],
-  [/misil|bomba|bombardeo|ataque|explosi/i, "missile launch"],
-  [/guerra|ej[eé]rcito|soldado|militar|conflicto/i, "soldiers war"],
-  [/nuclear|at[oó]mic/i, "nuclear explosion mushroom cloud"],
-  [/dinero digital|moneda digital|cbdc|pago digital|criptomoneda|bitcoin/i, "digital payment technology"],
-  [/efectivo|billete|dinero|banco|econom/i, "money banking"],
-  [/chip|implante|biom[eé]tric|reconocimiento facial|identidad digital/i, "biometric scan technology"],
-  [/marca|bestia/i, "hand scanner chip"],
-  [/inteligencia artificial|\bia\b|algoritmo|robot|chatgpt/i, "artificial intelligence"],
-  [/tecnolog|ciencia|internet|digital/i, "technology data network"],
-  [/vigilancia|c[aá]mara|control/i, "surveillance camera"],
-  [/arrebatamiento|nubes|cielo/i, "dramatic clouds sky light"],
-  [/trompeta/i, "shofar horn"],
-  [/segunda venida|regreso de cristo|vendr[aá]/i, "heaven light rays clouds"],
-  [/cruz|crucific|calvario/i, "cross sunset"],
-  [/jes[uú]s|cristo|salvador|se[ñn]or/i, "cross light hope"],
-  [/oraci[oó]n|orar|ora\b/i, "praying hands"],
-  [/biblia|escritura|vers[ií]culo|profeta|profec/i, "old bible book"],
-  [/apocalipsis|juicio|tribulaci[oó]n|fin del mundo/i, "apocalyptic storm"],
-  [/terremoto|sismo/i, "earthquake destruction"],
-  [/hambre|pobreza/i, "famine drought"],
-  [/pandemia|virus|peste/i, "virus pandemic hospital"],
-  [/persecuci|m[aá]rtir|iglesia quemada|perseguid/i, "burned church ruins"],
-  [/iglesia|congregaci|creyentes/i, "church interior candles"],
-  [/onu|naciones unidas|l[ií]deres mundiales|cumbre/i, "united nations assembly"],
-  [/gobierno|presidente|pol[ií]tic/i, "government building"],
-  [/multitud|personas|gente|mundo entero/i, "crowd city people"],
-  [/esperanza|salvaci[oó]n|vida eterna|amor/i, "sunrise hope light"],
-  [/tierra|planeta|global|naciones/i, "earth from space"],
-  [/estrellas|universo|se[ñn]ales en el cielo|luna|sol/i, "night sky stars"],
-  [/desierto|antiguo|historia/i, "desert ancient ruins"],
-];
-
-const FALLBACK_QUERIES = ["dramatic clouds sky", "dark storm clouds", "old bible book", "candle light darkness", "earth from space", "sunrise light rays"];
 
 const PLACES: [RegExp, string][] = [
   [/jerusal[eé]n/i, "Jerusalén"],
@@ -135,14 +137,15 @@ export const HIGHLIGHT_WORDS = [
   "inteligencia", "artificial", "digital", "nunca", "todo", "advertencia", "pregunta", "ahora", "hoy",
 ];
 
-function heuristicPlan(texts: string[]): ScenePlan[] {
-  const used = new Map<string, number>();
+function heuristicPlan(texts: string[], topic = ""): ScenePlan[] {
   const verseRefsShown = new Set<string>();
+  const usedFirst = new Map<string, number>();
   return texts.map((text, i) => {
-    let query = QUERY_MAP.find(([re]) => re.test(text))?.[1] ?? FALLBACK_QUERIES[i % FALLBACK_QUERIES.length];
-    const n = used.get(query) ?? 0;
-    used.set(query, n + 1);
-    if (n > 0) query = `${query} ${["cinematic", "dark", "aerial", "close up", "night"][n % 5]}`;
+    let queries = heuristicQueries(text, { prev: texts[i - 1], next: texts[i + 1], topic });
+    // escenas seguidas con la misma búsqueda principal: se rota el orden para variar el metraje
+    const n = usedFirst.get(queries[0]) ?? 0;
+    usedFirst.set(queries[0], n + 1);
+    if (n > 0 && queries.length > 1) queries = [...queries.slice(n % queries.length), ...queries.slice(0, n % queries.length)];
 
     let overlay: Overlay | null = null;
     const refs = findRefs(text).filter((r) => !verseRefsShown.has(r));
@@ -157,64 +160,79 @@ function heuristicPlan(texts: string[]): ScenePlan[] {
       overlay = { type: "headline", text: text.split(/[,.:;]/)[0].slice(0, 70) };
     }
     const keywords = words(text.toLowerCase().replace(/[^\p{L}\s]/gu, "")).filter((w) => HIGHLIGHT_WORDS.includes(w));
-    return { text, query, overlay, keywords };
+    return { text, query: queries[0], queries, overlay, keywords };
   });
 }
 
-/** Planifica las escenas: búsqueda visual (en inglés) y elementos en pantalla. */
-export async function planScenes(texts: string[], topic: string, projectId?: string): Promise<ScenePlan[]> {
-  const base = heuristicPlan(texts);
-  if ((await activeProvider()) === "none") return base;
+/**
+ * Planifica las escenas analizando el significado de cada fragmento en el contexto de todo
+ * el guion: búsquedas en inglés (de específica a general), elementos en pantalla, palabras
+ * clave y un título de impacto para los primeros segundos.
+ */
+export async function planScenes(texts: string[], topic: string, projectId?: string): Promise<PlanResult> {
+  const base = heuristicPlan(texts, topic);
+  const fallbackHook = topic ? topic.toLocaleUpperCase("es") : null;
+  if ((await activeProvider()) === "none") return { scenes: base, hookTitle: fallbackHook };
   try {
-    const r = await llmJson<{ scenes: { i: number; query: string; overlay_type: string; overlay_text: string; keywords: string[] }[] }>({
-      system: `Eres editor de video documental. Para cada escena de narración (tema: ${topic}) decide:
-- query: 2 a 5 palabras EN INGLÉS para buscar un clip o foto de archivo en Pexels/Pixabay que ilustre lo narrado de forma literal y concreta (lugares, objetos, acciones). Evita repetir la misma búsqueda en escenas consecutivas. Nunca pidas imágenes de personas reales concretas.
-- overlay_type: "verse" si la escena cita un versículo (overlay_text = referencia exacta, ej. "Apocalipsis 13:16"); "map" si la escena se centra en un país o ciudad (overlay_text = nombre del lugar en español); "headline" si presenta un hecho informado por el artículo (overlay_text = titular breve y fiel, máx. 8 palabras, sin exagerar); "interpretation" si es interpretación profética; "info" para un dato clave (overlay_text ≤ 6 palabras); "none" en los demás casos. Usa overlays en menos de la mitad de las escenas.
-- keywords: 1 a 3 palabras de la escena (tal como aparecen) que deben resaltarse en amarillo en los subtítulos.`,
+    const r = await llmJson<{
+      hook_title: string;
+      scenes: { i: number; meaning: string; queries: string[]; overlay_type: string; overlay_text: string; keywords: string[] }[];
+    }>({
+      system: `Eres editor de documentales cristianos de profecía bíblica (tema: ${topic || "profecía bíblica"}). Lee TODO el guion para entender el contexto y luego, para CADA escena:
+- meaning: qué significa realmente ese fragmento dentro del relato (máx. 12 palabras, en español). No te quedes en palabras sueltas: interpreta la idea (p. ej. "comprar ni vender" en contexto profético = control económico, no una tienda cualquiera).
+- queries: 3 búsquedas EN INGLÉS para Pexels/Pixabay, de la más específica a la más general, de METRAJE REAL de estilo documental/cinematográfico que ilustre ese significado (lugares, objetos, acciones, atmósfera: aerial, close up, silhouette, storm, light rays, ancient...). 2 a 5 palabras cada una. Prohibido: adornos navideños, Papá Noel, cráneos o calaveras, caricaturas, animaciones, ilustraciones, 3D, personas famosas o identificables por su nombre. Animaciones o gráficos tecnológicos (hologramas, código, circuitos) SOLO si la escena habla de tecnología. Evita repetir la misma búsqueda en escenas cercanas.
+- overlay_type: "verse" si cita un versículo (overlay_text = referencia exacta, ej. "Apocalipsis 13:16"); "map" si se centra en un país o ciudad (overlay_text = lugar en español); "headline" si presenta un hecho informado (overlay_text = titular breve y fiel, máx. 8 palabras); "interpretation" si es interpretación profética; "info" para un dato clave (≤ 6 palabras); "none" en los demás casos. Usa overlays en menos de la mitad de las escenas.
+- keywords: 1 a 3 palabras de la escena (tal como aparecen) para resaltar en amarillo en los subtítulos.
+Además, hook_title: 2 a 5 palabras de impacto en MAYÚSCULAS para mostrar en los primeros 3 segundos, fieles al contenido y sin sensacionalismo engañoso. Para la escena 0 elige búsquedas de máximo impacto visual (aerial, storm, light rays, dramatic).`,
       prompt: JSON.stringify(texts.map((t, i) => ({ i, text: t }))),
       schema: {
         type: "object",
         properties: {
+          hook_title: { type: "string" },
           scenes: {
             type: "array",
             items: {
               type: "object",
               properties: {
                 i: { type: "integer" },
-                query: { type: "string" },
+                meaning: { type: "string" },
+                queries: { type: "array", items: { type: "string" } },
                 overlay_type: { type: "string", enum: ["verse", "map", "headline", "interpretation", "info", "none"] },
                 overlay_text: { type: "string" },
                 keywords: { type: "array", items: { type: "string" } },
               },
-              required: ["i", "query", "overlay_type", "overlay_text", "keywords"],
+              required: ["i", "meaning", "queries", "overlay_type", "overlay_text", "keywords"],
               additionalProperties: false,
             },
           },
         },
-        required: ["scenes"],
+        required: ["hook_title", "scenes"],
         additionalProperties: false,
       },
       maxTokens: 64000,
       projectId,
-      expectedOutputChars: texts.length * 160,
-      purpose: "planificación de escenas",
+      expectedOutputChars: texts.length * 260,
+      purpose: "análisis visual de escenas",
     });
-    const byI = new Map(r.scenes.map((s) => [s.i, s]));
-    return base.map((b, i) => {
-      const s = byI.get(i);
-      if (!s) return b;
+    const byI = new Map(r.scenes.map((x) => [x.i, x]));
+    const scenes = base.map((b, i) => {
+      const x = byI.get(i);
+      if (!x) return b;
       let overlay: Overlay | null = null;
-      const t = (s.overlay_text || "").trim();
-      if (s.overlay_type === "verse" && t) overlay = { type: "verse", ref: t, text: VERSES.find((v) => v.ref === t)?.text };
-      else if (s.overlay_type === "map" && t) overlay = { type: "map", place: t };
-      else if (s.overlay_type === "headline" && t) overlay = { type: "headline", text: t };
-      else if (s.overlay_type === "info" && t) overlay = { type: "info", text: t };
-      else if (s.overlay_type === "interpretation") overlay = { type: "interpretation" };
-      return { text: b.text, query: s.query?.trim() || b.query, overlay, keywords: s.keywords?.length ? s.keywords : b.keywords };
+      const t = (x.overlay_text || "").trim();
+      if (x.overlay_type === "verse" && t) overlay = { type: "verse", ref: t, text: VERSES.find((v) => v.ref === t)?.text };
+      else if (x.overlay_type === "map" && t) overlay = { type: "map", place: t };
+      else if (x.overlay_type === "headline" && t) overlay = { type: "headline", text: t };
+      else if (x.overlay_type === "info" && t) overlay = { type: "info", text: t };
+      else if (x.overlay_type === "interpretation") overlay = { type: "interpretation" };
+      // búsquedas de la IA primero; las del diccionario quedan como respaldo
+      const queries = [...(x.queries ?? []).map((q) => q.trim()).filter(Boolean), ...b.queries].filter((q, k, a) => a.indexOf(q) === k).slice(0, 5);
+      return { text: b.text, query: queries[0] ?? b.query, queries, meaning: x.meaning, overlay, keywords: x.keywords?.length ? x.keywords : b.keywords };
     });
+    return { scenes, hookTitle: r.hook_title?.trim() ? r.hook_title.trim().toLocaleUpperCase("es").slice(0, 40) : fallbackHook };
   } catch (e) {
     console.warn("Planificación con IA falló, se usa la heurística:", e);
-    return base;
+    return { scenes: base, hookTitle: fallbackHook };
   }
 }
 

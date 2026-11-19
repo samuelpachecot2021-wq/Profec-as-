@@ -103,6 +103,25 @@ function highlight(text: string, keywords: Set<string>) {
     .join(" ");
 }
 
+/**
+ * Zonas seguras (fracciones del encuadre) donde las apps colocan sus botones y textos:
+ * - 9:16 (Reels, TikTok, Shorts): arriba ~14 %, abajo ~25 % (descripción y usuario), derecha ~16 % (botones).
+ * - 4:5 (Facebook), 1:1 y 16:9 (YouTube): márgenes estándar.
+ */
+export function safeZone(w: number, h: number) {
+  const r = h / w;
+  if (r >= 1.6) return { top: 0.14, bottom: 0.25, left: 0.06, right: 0.16, kind: "vertical" as const };
+  if (r > 1.05) return { top: 0.08, bottom: 0.14, left: 0.06, right: 0.06, kind: "feed" as const };
+  if (r >= 0.95) return { top: 0.07, bottom: 0.11, left: 0.06, right: 0.06, kind: "square" as const };
+  return { top: 0.06, bottom: 0.08, left: 0.06, right: 0.06, kind: "landscape" as const };
+}
+
+/** Tamaño de los subtítulos (px) según el formato: grandes y legibles en el teléfono. */
+export function subtitleSize(w: number, h: number) {
+  const z = safeZone(w, h).kind;
+  return Math.round(z === "vertical" ? w * 0.085 : z === "feed" ? w * 0.078 : z === "square" ? w * 0.074 : h * 0.072);
+}
+
 export function buildAss(opts: {
   scenes: TimedScene[];
   w: number;
@@ -110,16 +129,25 @@ export function buildAss(opts: {
   subtitles: boolean;
   position: "abajo" | "centro" | "arriba";
   title: string;
+  /** Título de impacto para los primeros 3 segundos. */
+  hook?: string | null;
 }) {
   const { w, h } = opts;
   const vertical = h > w;
   const base = Math.min(w, h);
-  const subSize = Math.round(vertical ? w * 0.072 : base * 0.062);
-  const outline = Math.max(2, Math.round(subSize * 0.09));
+  const sz = safeZone(w, h);
+  const subSize = subtitleSize(w, h);
+  const outline = Math.max(3, Math.round(subSize * 0.1));
   const align = opts.position === "arriba" ? 8 : opts.position === "centro" ? 5 : 2;
-  const marginV = Math.round(opts.position === "abajo" ? h * (vertical ? 0.2 : 0.08) : opts.position === "arriba" ? h * 0.12 : 0);
+  const marginV = Math.round(opts.position === "abajo" ? h * (sz.bottom + (sz.kind === "vertical" ? 0.06 : 0.02)) : opts.position === "arriba" ? h * (sz.top + 0.04) : 0);
   const margin = Math.round(w * 0.06);
-  const small = Math.round(base * 0.032);
+  const mL = Math.round(w * sz.left);
+  const mR = Math.round(w * sz.right);
+  const topY = Math.round(h * sz.top);
+  const small = Math.round(base * (sz.kind === "vertical" ? 0.036 : 0.032));
+  const cueWords = sz.kind === "vertical" ? 3 : sz.kind === "landscape" ? 5 : 4;
+  const cueChars = sz.kind === "vertical" ? 20 : sz.kind === "landscape" ? 34 : 26;
+  const hookSize = Math.round(sz.kind === "vertical" ? w * 0.105 : sz.kind === "landscape" ? h * 0.115 : w * 0.095);
 
   const header = `[Script Info]
 ScriptType: v4.00+
@@ -131,15 +159,16 @@ YCbCr Matrix: TV.709
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Sub,Inter ExtraBold,${subSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,-1,0,0,0,100,100,0,0,1,${outline},${Math.round(outline / 2)},${align},${margin},${margin},${marginV},1
-Style: VerseRef,DejaVu Serif,${Math.round(base * 0.05)},${GOLD.slice(0, -1)},&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,1,0,1,${Math.max(2, outline - 1)},2,8,${margin},${margin},${Math.round(h * 0.1)},1
+Style: Sub,Inter Black,${subSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,-1,0,0,0,100,100,0,0,1,${outline},${Math.round(outline / 2)},${align},${mL},${mR},${marginV},1
+Style: Hook,Inter Black,${hookSize},${GOLD.slice(0, -1)},&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,2,0,1,${Math.round(hookSize * 0.08)},${Math.round(hookSize * 0.05)},5,${mL},${mR},0,1
+Style: VerseRef,DejaVu Serif,${Math.round(base * 0.05)},${GOLD.slice(0, -1)},&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,1,0,1,${Math.max(2, outline - 1)},2,8,${mL},${mR},${topY + Math.round(h * 0.02)},1
 Style: VerseText,DejaVu Serif,${Math.round(base * (vertical ? 0.04 : 0.036))},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,-1,0,0,100,100,0,0,1,${Math.max(2, outline - 1)},2,8,${Math.round(w * 0.1)},${Math.round(w * 0.1)},${Math.round(h * 0.18)},1
-Style: Tag,Inter Bold,${small},&H00FFFFFF,&H00FFFFFF,&H001C1CB8,&H00000000,-1,0,0,0,100,100,2,0,3,${Math.round(small * 0.35)},0,7,${margin},${margin},${Math.round(h * 0.06)},1
-Style: Headline,Inter ExtraBold,${Math.round(base * 0.045)},&H00FFFFFF,&H00FFFFFF,&H00101010,&H00000000,-1,0,0,0,100,100,0,0,3,${Math.round(base * 0.016)},0,7,${margin},${margin},${Math.round(h * 0.06 + small * 2.1)},1
-Style: Interp,Inter Bold,${small},&H0045B8E8,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,2,0,1,2,1,9,${margin},${margin},${Math.round(h * 0.06)},1
+Style: Tag,Inter Bold,${small},&H00FFFFFF,&H00FFFFFF,&H001C1CB8,&H00000000,-1,0,0,0,100,100,2,0,3,${Math.round(small * 0.35)},0,7,${mL},${mR},${topY},1
+Style: Headline,Inter ExtraBold,${Math.round(base * (sz.kind === "vertical" ? 0.052 : 0.045))},&H00FFFFFF,&H00FFFFFF,&H00101010,&H00000000,-1,0,0,0,100,100,0,0,3,${Math.round(base * 0.016)},0,7,${mL},${mR},${Math.round(topY + small * 2.1)},1
+Style: Interp,Inter Bold,${small},&H0045B8E8,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,2,0,1,2,1,${sz.kind === "vertical" ? 7 : 9},${mL},${margin},${topY},1
 Style: Place,Inter Black,${Math.round(base * 0.07)},${GOLD.slice(0, -1)},&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,4,0,1,${outline},3,5,0,0,0,1
 Style: Info,Inter Black,${Math.round(base * 0.075)},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,1,0,1,${outline},3,5,${margin},${margin},0,1
-Style: Disclaimer,Inter Bold,${Math.round(base * 0.022)},&H00DDDDDD,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,1,0,3,${Math.round(w * 0.03)},${Math.round(w * 0.03)},${Math.round(h * 0.03)},1
+Style: Disclaimer,Inter Bold,${Math.round(base * (sz.kind === "vertical" ? 0.026 : 0.022))},&H00DDDDDD,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,1,0,${sz.kind === "vertical" ? 8 : 3},${Math.max(Math.round(w * 0.03), mL)},${Math.max(Math.round(w * 0.03), mR)},${sz.kind === "vertical" ? Math.round(topY * 0.55) : Math.round(h * 0.03)},1
 Style: Shape,Inter Bold,20,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1
 
 [Events]
@@ -147,6 +176,16 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
   const ev: string[] = [];
   const add = (layer: number, s: number, e: number, style: string, text: string) => ev.push(`Dialogue: ${layer},${assTime(s)},${assTime(e)},${style},,0,0,0,,${text}`);
+
+  // ── Primeros 3 segundos: destello de luz y título de impacto ──
+  if (opts.scenes.length) {
+    add(20, 0, 0.45, "Shape", `{\\an7\\pos(0,0)\\1c&HFFFFFF&\\1a&H20&\\t(0,420,\\1a&HFF&)\\p1}m 0 0 l ${w} 0 ${w} ${h} 0 ${h}{\\p0}`);
+    if (opts.hook) {
+      const hy = Math.round(h * (sz.kind === "vertical" ? 0.32 : 0.3));
+      const hx = Math.round((mL + (w - mR)) / 2);
+      add(15, 0.12, Math.min(3.0, Math.max(1.8, opts.scenes[0].end + 0.4)), "Hook", `{\\pos(${hx},${hy})\\fad(120,350)\\fscx135\\fscy135\\blur2\\t(0,260,\\fscx100\\fscy100\\blur0.4)}${esc(opts.hook.toUpperCase())}`);
+    }
+  }
 
   for (const sc of opts.scenes) {
     const d = sc.end - sc.start;
@@ -158,9 +197,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       add(0, os, oe, "Shape", `{\\an7\\pos(0,0)\\1c&H000000&\\1a&HFF&\\t(0,400,\\1a&H70&)\\p1}m 0 0 l ${w} 0 ${w} ${h} 0 ${h}{\\p0}`);
       add(2, os, oe, "VerseRef", `{\\fad(400,300)\\blur0.6}${esc(o.ref.toUpperCase())}`);
       if (o.text && !opts.subtitles) add(2, os + 0.3, oe, "VerseText", `{\\fad(500,300)}“${esc(o.text)}”`);
-      add(2, os, oe, "Disclaimer", `{\\an1\\fad(400,300)}Reina-Valera 1960`);
+      add(2, os, oe, "Disclaimer", `{\\an${sz.kind === "vertical" ? 8 : 1}\\fad(400,300)}Reina-Valera 1960`);
     } else if (o?.type === "headline") {
-      add(3, os, Math.min(oe, os + 6), "Tag", `{\\fad(200,200)\\move(${-w * 0.2},${Math.round(h * 0.06)},${margin},${Math.round(h * 0.06)},0,350)}  INFORME  `);
+      add(3, os, Math.min(oe, os + 6), "Tag", `{\\fad(200,200)\\move(${-w * 0.2},${topY},${mL},${topY},0,350)}  INFORME  `);
       add(3, os + 0.2, Math.min(oe, os + 6), "Headline", `{\\fad(300,250)}${esc(o.text.toUpperCase())}`);
     } else if (o?.type === "map") {
       const cx = Math.round(w / 2);
@@ -181,7 +220,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     if (opts.subtitles) {
       const kw = new Set(sc.keywords.map(norm));
-      const cues = chunkScene(sc.text, sc.start, sc.end, vertical ? 4 : 6, vertical ? 26 : 40);
+      const cues = chunkScene(sc.text, sc.start, sc.end, cueWords, cueChars);
       for (const c of cues) {
         add(10, c.start, c.end, "Sub", `{\\fscx92\\fscy92\\t(0,90,\\fscx100\\fscy100)}${highlight(c.text, kw)}`);
       }

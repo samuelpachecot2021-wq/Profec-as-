@@ -42,6 +42,11 @@ function kenBurns(motion: number, frames: number) {
   const p = `(0.5-0.5*cos(PI*on/${frames}))`; // movimiento suave (ease in-out)
   const cx = "iw/2-(iw/zoom/2)";
   const cy = "ih/2-(ih/zoom/2)";
+  if (motion < 0) {
+    // Impacto inicial: acercamiento rápido que se frena (ease-out), centrado.
+    const fast = `(1-pow(1-min(1,on/${Math.round(frames * 0.6)}),3))`;
+    return { z: `1.0+0.2*${fast}`, x: cx, y: cy };
+  }
   switch (motion % 6) {
     case 0:
       return { z: `1.0+0.14*${p}`, x: cx, y: cy }; // acercamiento progresivo
@@ -105,6 +110,8 @@ export async function renderSegment(
       `crop=${w}:${h}:x='${dir}':y='(ih-oh)/2'`,
       GRADE_VIDEO,
       VIGNETTE,
+      // Impacto inicial en clips: acercamiento rápido durante el primer segundo y medio.
+      seg.motion < 0 ? `zoompan=z='1+0.16*(1-pow(1-min(1,on/45),3))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${w}x${h}:fps=${FPS}` : "",
       fades,
       "format=yuv420p",
     ].filter(Boolean).join(",");
