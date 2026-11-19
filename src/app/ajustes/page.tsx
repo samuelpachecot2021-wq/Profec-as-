@@ -45,7 +45,7 @@ export default function Settings() {
       const r = await api<S>("/api/settings", { method: "POST", json: body });
       setS(r);
       setVals(r.plain);
-      setMsg("Ajustes guardados de forma segura en su equipo.");
+      setMsg("Ajustes guardados de forma segura en su servidor.");
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -61,7 +61,7 @@ export default function Settings() {
     <div className="space-y-5">
       <h1 className="font-serif text-2xl font-extrabold text-white">Ajustes</h1>
       <Alert kind="info">
-        🔒 Las claves se guardan solo en este equipo (archivo <code>data/secrets.json</code>, que nunca se sube a GitHub) y nunca se envían al navegador: aquí solo verá los últimos caracteres.
+        🔒 Las claves se guardan solo en su servidor (archivo <code>secrets.json</code> del disco de datos, que nunca se sube a GitHub) y nunca se envían al navegador: aquí solo verá los últimos caracteres.
       </Alert>
       {msg && <Alert kind="ok">{msg}</Alert>}
       {err && <Alert kind="error">{err}</Alert>}

@@ -26,7 +26,7 @@ export async function estimateProject(projectId: string, scope: "script" | "vide
       items.push({ label: "Títulos, descripción y capítulos (SEO)", cost: estimateClaudeCost(scriptChars + 2000, 4000) });
       if (s.translateSubsEn) items.push({ label: "Subtítulos en inglés", cost: estimateClaudeCost(scriptChars * 1.3, scriptChars * 1.1) });
     }
-  } else if (provider === "ollama") notes.push("Guion y textos con Ollama (gratis, en su equipo).");
+  } else if (provider === "ollama") notes.push("Guion y textos con Ollama (gratis, en su servidor).");
   else notes.push("Sin IA de texto configurada: se usará el modo local gratuito.");
 
   if (scope === "video") {

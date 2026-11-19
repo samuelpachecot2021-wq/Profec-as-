@@ -59,6 +59,7 @@ fije en *Ajustes* (10 USD por defecto).
 1. Pulse **New Project → Deploy from GitHub repo**.
 2. Si no aparece el repositorio, pulse **Configure GitHub App** y dé acceso a **Profec-as-**.
 3. Elija **Profec-as-**. Railway detecta solo el archivo `Dockerfile` y empieza a construir (tarda 5–10 minutos la primera vez).
+4. En *Settings → Source* compruebe que la rama (**Branch**) sea **`main`**.
 
 ### 3. Añadir la contraseña y las claves (pestaña **Variables** del servicio)
 Pulse **New Variable** para cada una:
@@ -101,6 +102,26 @@ Las claves de Pexels, Claude, etc. es más sencillo ponerlas después desde la p
    (Si el repositorio es privado, GitHub le pedirá su usuario y un *token* en lugar de la contraseña:
    GitHub → Settings → Developer settings → Personal access tokens.)
 5. El instalador le pide usuario y contraseña y al final muestra su enlace, por ejemplo `https://140-238-1-2.sslip.io`.
+
+---
+
+## 🔑 Conectar los servicios (desde la app: **Ajustes → Claves de servicios**)
+
+Copie cada clave y péguela en su casilla de **Ajustes**; pulse **Guardar claves**. Recomendado en este orden:
+
+| # | Servicio | Dónde se consigue la clave | Costo |
+|---|---|---|---|
+| 1 | **Pexels** (videos y fotos) | https://www.pexels.com/api/ → crear cuenta → **Your API Key** | Gratis |
+| 2 | **Pixabay** (videos y fotos) | https://pixabay.com/api/docs/ → iniciar sesión → la clave aparece en el apartado *Parameters* (`key`) | Gratis |
+| 3 | **Unsplash** (fotos) | https://unsplash.com/oauth/applications → **New Application** → copiar **Access Key** | Gratis |
+| — | **Wikimedia Commons** y **NASA** | No necesitan clave: ya funcionan | Gratis |
+| 4 | **Voz Azure** (opcional, muy estable) | https://portal.azure.com → *Crear recurso* → **Speech** → plan **Free F0** → *Keys and Endpoint* → copiar **KEY 1** y la **región**; en Ajustes elija «Plan gratuito F0» | Gratis hasta 500 000 caracteres/mes |
+| 5 | **Claude** (guiones profesionales) | https://console.anthropic.com → *API Keys* → **Create Key**; en *Billing* cargue saldo (5 USD alcanzan para ~15–30 videos) | ~0,15–0,40 USD por video |
+| 6 | **OpenAI** (imágenes con IA, opcional) | https://platform.openai.com → *API keys* → **Create new secret key**; activar «Imágenes con IA si faltan» en Opciones avanzadas | ~0,04–0,07 USD por imagen |
+| — | **Música** | Nada que configurar: la app compone su propia música. Opcional: suba pistas de la *Biblioteca de audio de YouTube* en Ajustes | Gratis |
+
+La **voz masculina grave «Jorge»** (gratis) es la predeterminada; si alguna vez fallara, el servidor cambia solo a la voz
+**Piper** (gratuita, incluida en el servidor). Subtítulos, miniaturas, SEO y notificaciones no necesitan claves.
 
 ---
 

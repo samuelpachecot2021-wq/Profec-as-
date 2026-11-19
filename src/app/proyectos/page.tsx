@@ -43,7 +43,7 @@ export default function Projects() {
           <Button variant="gold">+ Nuevo video</Button>
         </Link>
       </div>
-      <p className="text-sm text-zinc-400">Todos los proyectos se guardan automáticamente en su equipo. Si cierra la aplicación durante una producción, se reanudará al volver a abrirla.</p>
+      <p className="text-sm text-zinc-400">Todos los proyectos se guardan automáticamente en su servidor. Las producciones continúan aunque cierre la app, y se reanudan solas si el servidor se reinicia.</p>
       {error && <p className="text-red-300">{error}</p>}
       {rows && rows.length === 0 && (
         <Card>
