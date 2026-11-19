@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { synthesize, voiceById, estimateTtsCost } from "@/lib/tts";
+import { synthesize, voiceById, estimateTtsCost, voiceCacheKey } from "@/lib/tts";
 import { CACHE_DIR } from "@/lib/paths";
 import { hash } from "@/lib/util";
 import { monthSpent, monthlyBudget, recordCost } from "@/lib/costs";
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     const { voiceId, speed = 1, text, elevenVoiceId } = (await req.json()) as { voiceId: string; speed?: number; text?: string; elevenVoiceId?: string };
     const v = voiceById(voiceId);
     const t = (text || SAMPLE).slice(0, 400);
-    const out = path.join(CACHE_DIR, `voz-${hash(v.id, speed, t, elevenVoiceId ?? "")}.wav`);
+    const out = path.join(CACHE_DIR, `voz-${hash(voiceCacheKey(v.id, elevenVoiceId), speed, t)}.wav`);
     if (!fs.existsSync(out)) {
       const cost = estimateTtsCost(v.id, t.length);
       if (cost > 0 && monthSpent() + cost > monthlyBudget()) throw new Error("Se superaría el presupuesto mensual.");

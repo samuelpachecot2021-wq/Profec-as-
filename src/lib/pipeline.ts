@@ -5,7 +5,7 @@ import { dims } from "./options";
 import { getProject, getScenes, projectSettings, updateProject, type SceneRow } from "./projects";
 import { generateScript, applyHouseRules, translateLines } from "./script";
 import { splitScenes, planScenes, groupBlocks, type Overlay } from "./scenes";
-import { synthesize, VoiceUnavailable } from "./tts";
+import { synthesize, VoiceUnavailable, voiceCacheKey } from "./tts";
 import { findAssetForScene, getAsset } from "./media";
 import { musicFor } from "./music";
 import { buildAss, srtCues, toSrt, type TimedScene } from "./subtitles";
@@ -90,7 +90,7 @@ async function ensureNarration(projectId: string, scenes: SceneRow[], report: Re
     for (let b = 0; b < blocks.length; b++) {
       report(0.1 + (0.25 * b) / blocks.length, `Generando la voz en off (${b + 1}/${blocks.length})`);
       const text = blocks[b].map((i) => scenes[i].text).join(" ");
-      const file = path.join(dir, `bloque-${hash(text, s.voiceId, s.speed, s.elevenVoiceId ?? "")}.wav`);
+      const file = path.join(dir, `bloque-${hash(text, voiceCacheKey(s.voiceId, s.elevenVoiceId), s.speed)}.wav`);
       let duration: number;
       try {
         duration = await synthesize({ text, voiceId: s.voiceId, elevenVoiceId: s.elevenVoiceId, speed: s.speed, out: file, projectId });

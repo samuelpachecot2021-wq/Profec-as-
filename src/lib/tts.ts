@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { VOICES, type VoiceOption } from "./options";
-import { getSetting } from "./settings";
+import { VOICES, BRIAN_VOICE_ID, type VoiceOption } from "./options";
+import { getSetting, normalizeElevenVoiceId, isValidElevenVoiceId } from "./settings";
 import { run, ffprobeDuration, fetchWithTimeout, exists, sleep } from "./util";
 import { recordCost, assertCanSpend } from "./costs";
 
@@ -20,8 +20,31 @@ export function voiceById(id: string) {
   return VOICES.find((v) => v.id === id) ?? VOICES[0];
 }
 
+/**
+ * ID de voz de ElevenLabs que se usará realmente. Prioridad:
+ * 1) voz elegida solo para ese proyecto, 2) la de Ajustes, 3) Brian.
+ */
+export function resolveElevenVoiceId(projectVoiceId?: string) {
+  const own = normalizeElevenVoiceId(projectVoiceId || "");
+  if (own && isValidElevenVoiceId(own)) return own;
+  const global = normalizeElevenVoiceId(getSetting("ELEVENLABS_VOICE_ID"));
+  if (global && isValidElevenVoiceId(global)) return global;
+  return BRIAN_VOICE_ID;
+}
+
+/**
+ * Identificador exacto de la voz para la caché de audio. Incluye el ID efectivo de
+ * ElevenLabs: al cambiar la voz en Ajustes ya no se reutiliza audio de la voz anterior.
+ */
+export function voiceCacheKey(voiceId: string, projectElevenVoiceId?: string) {
+  const v = voiceById(voiceId);
+  return v.provider === "elevenlabs" ? `elevenlabs:${resolveElevenVoiceId(projectElevenVoiceId)}` : v.id;
+}
+
 export function estimateTtsCost(voiceId: string, chars: number) {
   const p = voiceById(voiceId).provider;
+  // Con una suscripción mensual de ElevenLabs no hay costo adicional por video.
+  if (p === "elevenlabs" && getSetting("ELEVENLABS_PLAN") === "suscripcion") return 0;
   // Con el plan gratuito F0 de Azure (500 000 caracteres/mes) no hay cargos.
   if (p === "azure" && getSetting("AZURE_FREE_TIER") === "si") return 0;
   return (chars / 1000) * TTS_PRICE_PER_1K[p];
@@ -120,7 +143,13 @@ async function elevenTts(text: string, voiceId: string, speed: number, out: stri
     },
     180000,
   );
-  if (!res.ok) throw new Error(`ElevenLabs respondió ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  if (!res.ok) {
+    const body = (await res.text()).slice(0, 300);
+    if (res.status === 401 && /quota/i.test(body)) throw new Error("ElevenLabs: se agotaron los caracteres de su plan este mes.");
+    if (res.status === 401) throw new Error("ElevenLabs: la clave no es válida. Revísela en Ajustes.");
+    if (res.status === 404) throw new Error(`ElevenLabs: no existe la voz con ID ${voiceId}. Revise el ID en Ajustes.`);
+    throw new Error(`ElevenLabs respondió ${res.status}: ${body}`);
+  }
   const mp3 = out.replace(/\.wav$/, ".mp3");
   fs.writeFileSync(mp3, Buffer.from(await res.arrayBuffer()));
   await toWav(mp3, out);
@@ -211,7 +240,7 @@ export async function synthesize(opts: { text: string; voiceId: string; elevenVo
       await azureTts(opts.text, v.voice, opts.speed, tmp);
       break;
     case "elevenlabs":
-      await elevenTts(opts.text, opts.elevenVoiceId || getSetting("ELEVENLABS_VOICE_ID") || "", opts.speed, tmp);
+      await elevenTts(opts.text, resolveElevenVoiceId(opts.elevenVoiceId), opts.speed, tmp);
       break;
     case "espeak":
       await espeakTts(opts.text, v.voice, opts.speed, tmp);

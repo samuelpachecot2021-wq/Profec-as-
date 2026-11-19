@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { DATA_DIR } from "./paths";
+import { BRIAN_VOICE_ID } from "./options";
 
 /**
  * Claves y preferencias globales. Se guardan SOLO en el servidor
@@ -29,6 +30,7 @@ export const PLAIN_KEYS = [
   "LLM_PROVIDER",
   "ELEVENLABS_VOICE_ID",
   "AZURE_FREE_TIER",
+  "ELEVENLABS_PLAN",
 ] as const;
 
 export type SecretKey = (typeof SECRET_KEYS)[number];
@@ -46,6 +48,8 @@ const DEFAULTS: Partial<Record<AnyKey, string>> = {
   DAILY_PROJECT_LIMIT: "12",
   ALLOW_CC_BY_SA: "no",
   LLM_PROVIDER: "auto",
+  ELEVENLABS_VOICE_ID: BRIAN_VOICE_ID,
+  ELEVENLABS_PLAN: "uso",
 };
 
 function readFile(): Record<string, string> {
@@ -71,13 +75,27 @@ export function saveSettings(values: Partial<Record<AnyKey, string>>) {
   for (const [k, v] of Object.entries(values)) {
     if (![...SECRET_KEYS, ...PLAIN_KEYS].includes(k as AnyKey)) continue;
     if (v === undefined) continue;
-    if (v === "") delete file[k];
-    else file[k] = String(v).trim();
+    const clean = k === "ELEVENLABS_VOICE_ID" ? normalizeElevenVoiceId(String(v)) : String(v).trim();
+    if (k === "ELEVENLABS_VOICE_ID" && clean && !isValidElevenVoiceId(clean))
+      throw new Error("El ID de voz de ElevenLabs no es válido. Debe ser un código como nPczCjzI2devNBz1zQrb (Brian).");
+    if (clean === "") delete file[k];
+    else file[k] = clean;
   }
   fs.writeFileSync(FILE, JSON.stringify(file, null, 2), { mode: 0o600 });
   try {
     fs.chmodSync(FILE, 0o600);
   } catch {}
+}
+
+/** Limpia un ID de voz pegado con espacios, comillas o dentro de un enlace de ElevenLabs. */
+export function normalizeElevenVoiceId(v: string) {
+  const t = v.trim().replace(/^["'«“]+|["'»”]+$/g, "").trim();
+  const m = t.match(/(?:voice[_-]?id=|voices\/|text-to-speech\/)([A-Za-z0-9]{15,40})/i);
+  return m ? m[1] : t;
+}
+
+export function isValidElevenVoiceId(v: string) {
+  return /^[A-Za-z0-9]{15,40}$/.test(v);
 }
 
 function mask(v: string) {

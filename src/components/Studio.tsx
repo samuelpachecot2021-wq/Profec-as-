@@ -489,9 +489,7 @@ function VoiceField({ settings, set, status }: { settings: ProjectSettings; set:
   return (
     <Field label="Voz en off" hint={missing ? "⚠️ Falta la clave de este proveedor en Ajustes" : v.note}>
       <Select value={settings.voiceId} onChange={(x) => set("voiceId", x)} options={VOICES.map((x) => ({ value: x.id, label: x.label }))} />
-      {v.provider === "elevenlabs" && (
-        <input className={`${inputCls} mt-2`} placeholder="ID de voz de ElevenLabs (opcional si está en Ajustes)" value={settings.elevenVoiceId ?? ""} onChange={(e) => set("elevenVoiceId", e.target.value.trim())} />
-      )}
+      {v.provider === "elevenlabs" && <ElevenVoiceInfo projectVoiceId={settings.elevenVoiceId} onChange={(x) => set("elevenVoiceId", x)} />}
       <div className="mt-2 flex items-center gap-2">
         <span className="w-20 text-xs text-zinc-400">Velocidad {settings.speed.toFixed(2)}×</span>
         <input type="range" min={0.7} max={1.3} step={0.05} value={settings.speed} onChange={(e) => set("speed", parseFloat(e.target.value))} className="flex-1 accent-[#d4a64a]" />
@@ -534,5 +532,48 @@ function MusicField({ settings, set }: { settings: ProjectSettings; set: <K exte
         </div>
       )}
     </Field>
+  );
+}
+
+/** Muestra qué voz de ElevenLabs sonará realmente y permite elegir otra solo para este proyecto. */
+function ElevenVoiceInfo({ projectVoiceId, onChange }: { projectVoiceId?: string; onChange: (v: string) => void }) {
+  const [info, setInfo] = useState<{ id: string; name: string | null; verified: boolean; error?: string } | null>(null);
+  const [other, setOther] = useState(!!projectVoiceId);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      api<{ id: string; name: string | null; verified: boolean; error?: string }>(`/api/voices/eleven?proyecto=${encodeURIComponent(projectVoiceId ?? "")}`)
+        .then(setInfo)
+        .catch(() => setInfo(null));
+    }, 400);
+    return () => clearTimeout(t);
+  }, [projectVoiceId]);
+  return (
+    <div className="mt-2 space-y-2">
+      {info && (
+        <p className={`rounded-lg border px-2.5 py-1.5 text-xs ${info.error ? "border-blood text-red-300" : "border-gold/40 text-gold"}`}>
+          🎙️ Sonará: <b>{info.name ?? "voz personalizada"}</b> <span className="font-mono text-zinc-500">({info.id})</span>
+          {info.verified ? " ✓" : ""} {info.error ?? ""}
+        </p>
+      )}
+      {other ? (
+        <div className="flex gap-2">
+          <input className={inputCls} placeholder="ID de otra voz de ElevenLabs solo para este proyecto" value={projectVoiceId ?? ""} onChange={(e) => onChange(e.target.value.trim())} />
+          <button
+            type="button"
+            className="whitespace-nowrap rounded-lg border border-line px-2.5 text-xs text-zinc-300"
+            onClick={() => {
+              onChange("");
+              setOther(false);
+            }}
+          >
+            Usar la de Ajustes
+          </button>
+        </div>
+      ) : (
+        <button type="button" className="text-xs text-zinc-500 underline" onClick={() => setOther(true)}>
+          Usar otra voz de ElevenLabs solo en este proyecto
+        </button>
+      )}
+    </div>
   );
 }

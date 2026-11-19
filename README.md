@@ -74,7 +74,7 @@ Nunca gasta más del 20 % sobre lo autorizado y se detiene al llegar al **presup
 * **Guion** con gancho en los primeros 5 segundos, preguntas, suspenso, transiciones, citas **Reina-Valera 1960**, pausas con «…»
   y **cierre evangelístico** centrado en Jesucristo; en un solo párrafo y editable. No inventa noticias ni citas, distingue
   **hechos** de **interpretación profética** y usa «**arrebatamiento**» en lugar de «rapto».
-* **Voz en off** masculina grave en español latino (gratis: *Jorge*), con velocidad ajustable, vista previa y opción de subir su propia narración.
+* **Voz en off** predeterminada: **Brian de ElevenLabs** (velocidad 0,95), con alternativas gratuitas (*Jorge*, Piper), vista previa y opción de subir su propia narración.
 * **Imágenes y clips** por escena (Pexels, Pixabay, Unsplash, Wikimedia Commons, NASA), priorizando video, sin repeticiones,
   con **fuente, autor y licencia** registrados y añadidos a la descripción. Las imágenes con IA se rotulan como ilustrativas.
 * **Edición:** efecto Ken Burns (acercamientos, alejamientos, paneos), transiciones cinematográficas y de luz, partículas,

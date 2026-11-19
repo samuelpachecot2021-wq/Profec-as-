@@ -120,8 +120,9 @@ Copie cada clave y péguela en su casilla de **Ajustes**; pulse **Guardar claves
 | 6 | **OpenAI** (imágenes con IA, opcional) | https://platform.openai.com → *API keys* → **Create new secret key**; activar «Imágenes con IA si faltan» en Opciones avanzadas | ~0,04–0,07 USD por imagen |
 | — | **Música** | Nada que configurar: la app compone su propia música. Opcional: suba pistas de la *Biblioteca de audio de YouTube* en Ajustes | Gratis |
 
-La **voz masculina grave «Jorge»** (gratis) es la predeterminada; si alguna vez fallara, el servidor cambia solo a la voz
-**Piper** (gratuita, incluida en el servidor). Subtítulos, miniaturas, SEO y notificaciones no necesitan claves.
+La voz predeterminada es **Brian de ElevenLabs** (ID `nPczCjzI2devNBz1zQrb`, velocidad 0,95): basta con pegar la clave de
+ElevenLabs en Ajustes. Si tiene suscripción mensual, elija «Tengo suscripción mensual» para que no se cuente un costo por video.
+Puede cambiar de voz en cualquier momento (por ejemplo, a «Jorge», gratis). Subtítulos, miniaturas, SEO y notificaciones no necesitan claves.
 
 ---
 

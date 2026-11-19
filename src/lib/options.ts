@@ -48,14 +48,18 @@ export type VoiceOption = {
   note?: string;
 };
 
+/** Voz predeterminada permanente: «Brian» de ElevenLabs (masculina, grave y narrativa). */
+export const BRIAN_VOICE_ID = "nPczCjzI2devNBz1zQrb";
+export const DEFAULT_VOICE_ID = "eleven-default";
+
 export const VOICES: VoiceOption[] = [
-  { id: "edge-jorge", provider: "edge", voice: "es-MX-JorgeNeural", label: "Jorge — masculina grave, latino neutro (gratis)", paid: false, note: "Recomendada. Voz neuronal gratuita (servicio en línea no oficial de Microsoft Edge)." },
+  { id: "eleven-default", provider: "elevenlabs", voice: BRIAN_VOICE_ID, label: "Brian · ElevenLabs — masculina grave (predeterminada)", paid: true, note: "Voz predeterminada. Usa el ID de voz de ElevenLabs indicado en Ajustes (Brian por defecto)." },
+  { id: "edge-jorge", provider: "edge", voice: "es-MX-JorgeNeural", label: "Jorge — masculina grave, latino neutro (gratis)", paid: false, note: "Voz neuronal gratuita (servicio en línea no oficial de Microsoft Edge)." },
   { id: "edge-gonzalo", provider: "edge", voice: "es-CO-GonzaloNeural", label: "Gonzalo — masculina profunda, Colombia (gratis)", paid: false },
   { id: "edge-tomas", provider: "edge", voice: "es-AR-TomasNeural", label: "Tomás — masculina, Argentina (gratis)", paid: false },
   { id: "edge-dalia", provider: "edge", voice: "es-MX-DaliaNeural", label: "Dalia — femenina, México (gratis)", paid: false },
   { id: "azure-jorge", provider: "azure", voice: "es-MX-JorgeNeural", label: "Azure · Jorge documental (500 000 caracteres gratis al mes)", paid: true },
   { id: "azure-jorge-dramatic", provider: "azure", voice: "es-MX-JorgeNeural|serious", label: "Azure · Jorge estilo serio", paid: true },
-  { id: "eleven-default", provider: "elevenlabs", voice: "", label: "ElevenLabs · voz configurada (de pago, la más humana)", paid: true, note: "Usa el ID de voz de ElevenLabs que elijas en Ajustes." },
   { id: "piper-ald", provider: "piper", voice: "es_MX-ald-medium", label: "Piper · masculina México (gratis, en el servidor)", paid: false, note: "Voz neuronal de código abierto que funciona dentro del propio servidor: sin límites ni costos." },
   { id: "espeak-es", provider: "espeak", voice: "mb-es2", label: "eSpeak/MBROLA local (sin internet, robótica)", paid: false },
   { id: "silencio", provider: "silencio", voice: "", label: "Sin voz (solo pruebas / narración propia)", paid: false },
@@ -87,7 +91,7 @@ export type ProjectSettings = {
 
 export const DEFAULT_SETTINGS: ProjectSettings = {
   duration: 480,
-  voiceId: "edge-jorge",
+  voiceId: DEFAULT_VOICE_ID,
   speed: 0.95,
   format: "16:9",
   resolution: 1080,

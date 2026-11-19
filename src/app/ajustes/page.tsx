@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { MUSIC_STYLES } from "@/lib/options";
+import { MUSIC_STYLES, BRIAN_VOICE_ID } from "@/lib/options";
 import { Alert, Button, Card, Field, Select, api, inputCls } from "@/components/ui";
 import { usePush, useInstall } from "@/components/pwa";
 
@@ -99,7 +99,19 @@ export default function Settings() {
                       <Select value={v("AZURE_FREE_TIER") || "no"} onChange={(x) => setV("AZURE_FREE_TIER", x)} options={[{ value: "no", label: "Plan de pago (S0)" }, { value: "si", label: "Plan gratuito F0 (sin costo)" }]} />
                     </div>
                   )}
-                  {k.key === "ELEVENLABS_API_KEY" && <input className={`${inputCls} mt-2`} placeholder="ID de voz de ElevenLabs (masculina grave)" value={v("ELEVENLABS_VOICE_ID")} onChange={(e) => setV("ELEVENLABS_VOICE_ID", e.target.value)} />}
+                  {k.key === "ELEVENLABS_API_KEY" && (
+                    <div className="mt-2 space-y-2">
+                      <label className="block text-xs text-zinc-400">ID de la voz predeterminada (Brian: nPczCjzI2devNBz1zQrb)</label>
+                      <div className="flex gap-2">
+                        <input className={`${inputCls} font-mono`} value={v("ELEVENLABS_VOICE_ID")} onChange={(e) => setV("ELEVENLABS_VOICE_ID", e.target.value)} />
+                        <Button variant="ghost" onClick={() => setV("ELEVENLABS_VOICE_ID", BRIAN_VOICE_ID)} title="Restablecer Brian">
+                          Brian
+                        </Button>
+                      </div>
+                      <VoiceCheck />
+                      <Select value={v("ELEVENLABS_PLAN") || "uso"} onChange={(x) => setV("ELEVENLABS_PLAN", x)} options={[{ value: "uso", label: "Contar el costo de cada video (pago por uso)" }, { value: "suscripcion", label: "Tengo suscripción mensual (no contar costo por video)" }]} />
+                    </div>
+                  )}
                   {k.key === "ANTHROPIC_API_KEY" && (
                     <div className="mt-2">
                       <Select
@@ -347,5 +359,32 @@ function MediaLibrary() {
         </div>
       )}
     </Card>
+  );
+}
+
+function VoiceCheck() {
+  const [r, setR] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        variant="ghost"
+        loading={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            const d = await api<{ id: string; name: string | null; verified: boolean; error?: string }>("/api/voices/eleven");
+            setR(d.error ? `⚠️ ${d.error}` : `Voz guardada: ${d.name ?? "personalizada"} (${d.id})${d.verified ? " — confirmada por ElevenLabs ✓" : ""}`);
+          } catch (e) {
+            setR((e as Error).message);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        Comprobar voz guardada
+      </Button>
+      {r && <span className="text-xs text-gold">{r}</span>}
+    </div>
   );
 }

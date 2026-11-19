@@ -29,7 +29,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       const next = { ...old, ...b.settings };
       fields.settings = JSON.stringify(next);
       // si cambia la voz o la velocidad, la narración anterior deja de ser válida
-      if ((old.voiceId !== next.voiceId || old.speed !== next.speed) && !p.custom_narration) fields.narration_path = null;
+      if ((old.voiceId !== next.voiceId || old.speed !== next.speed || (old.elevenVoiceId ?? "") !== (next.elevenVoiceId ?? "")) && !p.custom_narration) fields.narration_path = null;
       // cambio de formato: los recursos se vuelven a elegir según la nueva orientación
       if (old.format !== next.format) db().prepare("UPDATE scenes SET asset_id = NULL WHERE project_id = ? AND locked = 0").run(id);
     }
