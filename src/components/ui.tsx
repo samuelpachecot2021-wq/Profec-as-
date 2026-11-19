@@ -5,12 +5,12 @@ export function Card({ title, step, children, right, className = "" }: { title?:
   return (
     <section className={`rounded-2xl border border-line bg-panel p-4 shadow-xl shadow-black/30 sm:p-5 ${className}`}>
       {title && (
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="flex items-center gap-2 text-base font-bold text-white sm:text-lg">
+        <div className="mb-4 flex min-w-0 items-center justify-between gap-3">
+          <h2 className="flex shrink-0 items-center gap-2 text-base font-bold text-white sm:text-lg">
             {step && <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-gold text-sm font-extrabold text-black">{step}</span>}
             {title}
           </h2>
-          {right}
+          {right && <div className="min-w-0 shrink">{right}</div>}
         </div>
       )}
       {children}

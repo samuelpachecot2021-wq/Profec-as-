@@ -4,6 +4,7 @@ import { estimateTtsCost, voiceById } from "./tts";
 import { getSetting } from "./settings";
 import { AI_IMAGE_PRICE } from "./media";
 import { getProject, getScenes, projectSettings } from "./projects";
+import { pendingNarrationChars } from "./pipeline";
 
 export type Estimate = { items: { label: string; cost: number }[]; total: number; free: boolean; notes: string[] };
 
@@ -31,7 +32,13 @@ export async function estimateProject(projectId: string, scope: "script" | "vide
 
   if (scope === "video") {
     const v = voiceById(s.voiceId);
-    if (!p.custom_narration && v.paid) items.push({ label: `Voz (${v.label})`, cost: estimateTtsCost(v.id, scriptChars) });
+    if (!p.custom_narration && v.paid) {
+      // Solo se cobra la narración que aún no existe: al reanudar, la ya generada se reutiliza gratis.
+      const pending = pendingNarrationChars(projectId);
+      const chars = pending ?? scriptChars;
+      if (pending === 0) notes.push("La narración ya está generada: se reutiliza sin gastar créditos de voz.");
+      else items.push({ label: `Voz (${v.label})`, cost: estimateTtsCost(v.id, chars) });
+    }
     if (s.useAiImages && getSetting("OPENAI_API_KEY"))
       items.push({ label: `Imágenes IA (máximo, solo si faltan recursos: ${scenesCount} × $${AI_IMAGE_PRICE})`, cost: scenesCount * AI_IMAGE_PRICE });
     notes.push("Imágenes y videos de Pexels, Pixabay, Unsplash, Wikimedia y NASA: gratis.");

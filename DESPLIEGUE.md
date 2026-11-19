@@ -68,7 +68,7 @@ Pulse **New Variable** para cada una:
 |---|---|
 | `ADMIN_USER` | el nombre de usuario que usted quiera (ej. `samuel`) |
 | `ADMIN_PASSWORD` | una contraseña larga (mínimo 12 caracteres, con números y símbolos) |
-| `MAX_CONCURRENT_JOBS` | `2` (videos a la vez) |
+| `MAX_CONCURRENT_JOBS` | (opcional) déjela sin crear: la app decide sola según la memoria |
 
 Las claves de Pexels, Claude, etc. es más sencillo ponerlas después desde la propia app, en **Ajustes**.
 (Si lo prefiere, también puede crearlas aquí con los nombres de `.env.example`).
@@ -147,3 +147,21 @@ En la tableta y la computadora es igual (en la computadora, el icono de instalar
 * Conexión cifrada HTTPS (Railway y Caddy la configuran solos).
 * Los datos (artículos, videos, claves) solo están en su servidor. No se envían a terceros salvo a los servicios que usted active
   (por ejemplo, el texto del guion a Claude o a la voz elegida).
+
+---
+
+## 🩺 Si una producción se detiene (memoria y CPU en Railway)
+
+* **Ver el consumo:** en Railway abra el servicio → pestaña **Metrics**: verá la memoria (*Memory*) y la CPU usadas durante el render.
+  Si la línea de memoria toca el máximo justo cuando falló el video, era falta de memoria.
+* **Límite de memoria:** *Settings → Resources*. Recomendado **2 GB o más** (1 GB funciona con los ajustes automáticos, pero más lento).
+  Solo se paga lo que se usa.
+* **La app se adapta sola:** detecta la CPU y la memoria reales del contenedor, limita los hilos de FFmpeg, produce un video
+  a la vez si hay poca memoria y, si aun así el sistema detiene FFmpeg, repite la escena en «modo de memoria mínima».
+* **Registro detallado:** en la página del proyecto, apartado «Registro detallado»; y en el disco, `logs/errores.log`.
+* **Reanudar:** pulse **«▶️ Reanudar producción»**. Se reutilizan guion, narración, imágenes y escenas ya editadas: no se
+  vuelven a gastar créditos de ElevenLabs.
+* **Ajustes avanzados opcionales (Variables):** `FFMPEG_THREADS` (hilos por proceso, p. ej. `2`), `MAX_CONCURRENT_JOBS`
+  (videos a la vez), `RENDER_MEMORY_MB` (si Railway no informa la memoria, p. ej. `2048`).
+* **Sus claves y ajustes no se pierden al actualizar** mientras el disco esté conectado. La app usa automáticamente el disco
+  de Railway y, si no hay ninguno, muestra un aviso rojo en *Ajustes*.

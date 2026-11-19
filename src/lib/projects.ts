@@ -161,7 +161,7 @@ export function projectView(id: string) {
     createdAt: p.created_at,
     updatedAt: p.updated_at,
     scenes,
-    job: job ? { id: job.id, status: job.status, progress: job.progress, step: job.step, error: job.error, log: job.log.split("\n").slice(-30).join("\n") } : null,
+    job: job ? { id: job.id, status: job.status, progress: job.progress, step: job.step, error: job.error, log: job.log.split("\n").slice(-60).join("\n") } : null,
   };
 }
 

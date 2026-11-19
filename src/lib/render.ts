@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { run, exists, hash, ffprobeDuration } from "./util";
+import { run, exists, hash, ffprobeDuration, ProcessError, describeExit } from "./util";
+import { renderProfile, threadArgs } from "./resources";
 import { FONTS_DIR } from "./paths";
 
 export const FPS = 30;
@@ -25,7 +26,9 @@ export function ffmpegProgress(args: string[], totalSec: number, onProgress?: (p
       if (err.length > 100_000) err = err.slice(-50_000);
     });
     p.on("error", (e) => reject(new Error(`No se pudo ejecutar ffmpeg: ${e.message}`)));
-    p.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg falló (${code}): ${err.slice(-1500)}`))));
+    p.on("close", (code, signal) =>
+      code === 0 ? resolve() : reject(new ProcessError(describeExit("ffmpeg", code, signal, false, err), "ffmpeg", args, code, signal, err.slice(-4000))),
+    );
   });
 }
 
@@ -56,14 +59,26 @@ function kenBurns(motion: number, frames: number) {
 }
 
 /** Renderiza un segmento (imagen con Ken Burns o clip de video) a MP4 sin audio. */
-export async function renderSegment(seg: Segment, w: number, h: number, out: string, fade?: { in?: boolean; out?: boolean }) {
+/**
+ * Renderiza una escena. `threads` limita los hilos de FFmpeg (memoria contenida);
+ * `safe` es el modo de reintento para servidores con muy poca memoria (misma calidad de salida).
+ */
+export async function renderSegment(
+  seg: Segment,
+  w: number,
+  h: number,
+  out: string,
+  fade?: { in?: boolean; out?: boolean },
+  opt: { threads?: number; safe?: boolean } = {},
+) {
   if (exists(out)) return out;
+  const th = threadArgs(opt.safe ? 1 : (opt.threads ?? renderProfile().threads));
   const frames = Math.max(2, Math.round(seg.duration * FPS));
   const fades = [fade?.in ? `fade=t=in:st=0:d=0.35` : "", fade?.out ? `fade=t=out:st=${Math.max(0, seg.duration - 0.35).toFixed(3)}:d=0.35` : ""].filter(Boolean).join(",");
   const tmp = `${out}.part.mp4`;
-  const enc = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "15", "-pix_fmt", "yuv420p", "-r", String(FPS), "-an"];
+  const enc = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "15", "-pix_fmt", "yuv420p", "-r", String(FPS), "-an", ...th.encode];
   if (seg.kind === "image") {
-    const up = 1.3;
+    const up = opt.safe ? 1.15 : 1.3;
     const W2 = Math.round((w * up) / 2) * 2;
     const H2 = Math.round((h * up) / 2) * 2;
     const kb = kenBurns(seg.motion, frames);
@@ -77,12 +92,14 @@ export async function renderSegment(seg: Segment, w: number, h: number, out: str
       fades,
       "format=yuv420p",
     ].filter(Boolean).join(",");
-    await run("ffmpeg", ["-y", "-v", "error", "-i", seg.file, "-vf", vf, "-frames:v", String(frames), ...enc, tmp]);
+    await run("ffmpeg", ["-y", "-v", "error", ...th.filter, ...th.input, "-i", seg.file, "-vf", vf, "-frames:v", String(frames), ...enc, tmp]);
   } else {
     const W2 = Math.round((w * 1.08) / 2) * 2;
     const H2 = Math.round((h * 1.08) / 2) * 2;
     const dir = seg.motion % 2 === 0 ? `(iw-ow)*t/${seg.duration.toFixed(3)}` : `(iw-ow)*(1-t/${seg.duration.toFixed(3)})`;
     const vf = [
+      // En modo seguro se reduce primero el clip (p. ej. 4K) a lo necesario, con menos memoria por fotograma.
+      opt.safe ? `scale='min(iw,${Math.max(W2, H2) * 2})':-2:flags=fast_bilinear` : "",
       `fps=${FPS}`,
       `scale=${W2}:${H2}:force_original_aspect_ratio=increase`,
       `crop=${w}:${h}:x='${dir}':y='(ih-oh)/2'`,
@@ -91,20 +108,22 @@ export async function renderSegment(seg: Segment, w: number, h: number, out: str
       fades,
       "format=yuv420p",
     ].filter(Boolean).join(",");
-    await run("ffmpeg", ["-y", "-v", "error", "-stream_loop", "-1", "-i", seg.file, "-t", seg.duration.toFixed(3), "-vf", vf, ...enc, tmp]);
+    await run("ffmpeg", ["-y", "-v", "error", ...th.filter, ...th.input, "-stream_loop", "-1", "-i", seg.file, "-t", seg.duration.toFixed(3), "-vf", vf, ...enc, tmp]);
   }
   fs.renameSync(tmp, out);
   return out;
 }
 
 /** Une segmentos con transiciones cinematográficas (xfade). */
-export async function xfadeJoin(files: string[], durations: number[], out: string, seed: number) {
+export async function xfadeJoin(files: string[], durations: number[], out: string, seed: number, threads?: number) {
   if (exists(out)) return out;
   if (files.length === 1) {
     fs.copyFileSync(files[0], out);
     return out;
   }
-  const inputs = files.flatMap((f) => ["-i", f]);
+  const th = threadArgs(threads ?? renderProfile().threads);
+  // Cada entrada se decodifica con 1 hilo: con 8 escenas abiertas a la vez la memoria se mantiene baja.
+  const inputs = files.flatMap((f) => ["-threads", "1", "-i", f]);
   const parts: string[] = [];
   let prev = "[0:v]";
   let acc = durations[0];
@@ -117,7 +136,7 @@ export async function xfadeJoin(files: string[], durations: number[], out: strin
     acc = offset + durations[i];
   }
   const tmp = `${out}.part.mp4`;
-  await run("ffmpeg", ["-y", "-v", "error", ...inputs, "-filter_complex", parts.join(";"), "-map", "[v]", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "15", "-pix_fmt", "yuv420p", "-r", String(FPS), tmp]);
+  await run("ffmpeg", ["-y", "-v", "error", ...th.filter, ...inputs, "-filter_complex", parts.join(";"), "-map", "[v]", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "15", "-pix_fmt", "yuv420p", "-r", String(FPS), ...th.encode, tmp]);
   fs.renameSync(tmp, out);
   return out;
 }
@@ -154,11 +173,13 @@ export type FinalOpts = {
   out: string;
   height: number;
   onProgress?: (p: number) => void;
+  threads?: number;
 };
 
 /** Pasada final: partículas + subtítulos/gráficos + mezcla de audio con ducking + H.264/AAC. */
 export async function finalPass(o: FinalOpts) {
-  const args = ["-y", "-i", o.video, "-i", o.narration];
+  const th = threadArgs(o.threads ?? renderProfile().threads);
+  const args = ["-y", ...th.filter, ...th.input, "-i", o.video, "-i", o.narration];
   let idx = 2;
   let musicIdx = -1;
   let partIdx = -1;
@@ -195,7 +216,7 @@ export async function finalPass(o: FinalOpts) {
     "-filter_complex", f.join(";"),
     "-map", "[vout]", "-map", "[aout]",
     "-t", o.total.toFixed(2),
-    "-c:v", "libx264", "-preset", preset, "-crf", o.height >= 1440 ? "20" : "19", "-profile:v", "high", "-pix_fmt", "yuv420p", "-r", String(FPS),
+    "-c:v", "libx264", "-preset", preset, "-crf", o.height >= 1440 ? "20" : "19", "-profile:v", "high", "-pix_fmt", "yuv420p", "-r", String(FPS), ...th.encode,
     "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
     "-movflags", "+faststart",
     `${o.out}.part.mp4`,

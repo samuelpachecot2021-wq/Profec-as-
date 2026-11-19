@@ -14,9 +14,35 @@ import { makeThumbnails } from "./thumbnails";
 import { generateSeo, fullDescription } from "./seo";
 import { activeProvider } from "./llm";
 import { projectDir } from "./paths";
-import { ffprobeDuration, hash, exists } from "./util";
+import { ffprobeDuration, hash, exists, ProcessError } from "./util";
+import { renderProfile, resourceSummary, containerMemoryUsedMB } from "./resources";
 
-export type Reporter = (progress: number, step: string) => void;
+/** Informa el progreso; `log` (opcional) añade una línea al registro detallado del trabajo. */
+export type Reporter = ((progress: number, step: string) => void) & { log?: (msg: string) => void };
+
+const logOf = (r: Reporter) => (msg: string) => r.log?.(msg);
+
+/** Archivo de caché de un bloque de narración (mismo texto + misma voz = mismo archivo). */
+export function narrationBlockFile(projectId: string, text: string, s: { voiceId: string; elevenVoiceId?: string; speed: number }) {
+  return path.join(projectDir(projectId, "audio"), `bloque-${hash(text, voiceCacheKey(s.voiceId, s.elevenVoiceId), s.speed)}.wav`);
+}
+
+/**
+ * Caracteres de narración que aún NO están generados (y costarían créditos).
+ * Si la narración ya se generó en un intento anterior, devuelve 0.
+ */
+export function pendingNarrationChars(projectId: string): number | null {
+  const p = getProject(projectId);
+  if (!p || p.custom_narration) return 0;
+  const s = projectSettings(p);
+  const existing = getScenes(projectId);
+  const texts = existing.length && existing.map((x) => x.text).join(" ") === splitScenes(p.script, s.speed).join(" ") ? existing.map((x) => x.text) : p.script.trim() ? splitScenes(p.script, s.speed) : null;
+  if (!texts) return null;
+  return groupBlocks(texts)
+    .map((b) => b.map((i) => texts[i]).join(" "))
+    .filter((t) => !exists(narrationBlockFile(projectId, t, s)))
+    .reduce((a, t) => a + t.length, 0);
+}
 
 const weight = (s: string) => s.length + (s.match(/\.\.\.|…/g) || []).length * 12 + 6;
 
@@ -90,7 +116,8 @@ async function ensureNarration(projectId: string, scenes: SceneRow[], report: Re
     for (let b = 0; b < blocks.length; b++) {
       report(0.1 + (0.25 * b) / blocks.length, `Generando la voz en off (${b + 1}/${blocks.length})`);
       const text = blocks[b].map((i) => scenes[i].text).join(" ");
-      const file = path.join(dir, `bloque-${hash(text, voiceCacheKey(s.voiceId, s.elevenVoiceId), s.speed)}.wav`);
+      const file = narrationBlockFile(projectId, text, s);
+      const cached = exists(file);
       let duration: number;
       try {
         duration = await synthesize({ text, voiceId: s.voiceId, elevenVoiceId: s.elevenVoiceId, speed: s.speed, out: file, projectId });
@@ -103,6 +130,7 @@ async function ensureNarration(projectId: string, scenes: SceneRow[], report: Re
         return ensureNarration(projectId, scenes, report);
       }
       results.push({ file, duration });
+      logOf(report)(`Voz bloque ${b + 1}/${blocks.length}: ${cached ? "reutilizada (sin gastar créditos)" : "generada"} · ${duration.toFixed(1)} s`);
     }
     narration = path.join(dir, "narracion.wav");
     const GAP = 0.35;
@@ -184,22 +212,28 @@ function reuseRealImages(scenes: SceneRow[]) {
 /** Producción completa del video. */
 export async function produce(projectId: string, report: Reporter) {
   const started = Date.now();
+  const log = logOf(report);
+  const prof = renderProfile();
+  log(`Servidor: ${resourceSummary()}`);
   const script = await ensureScript(projectId, report);
   let p = getProject(projectId)!;
   const s = projectSettings(p);
   const { w, h } = dims(s.format, s.resolution);
+  log(`Proyecto: ${s.format} ${w}×${h} · ${Math.round(s.duration / 60 * 10) / 10} min · voz ${voiceCacheKey(s.voiceId, s.elevenVoiceId)} a ${s.speed}`);
 
   let scenes = await ensureScenes(projectId, script, s.speed, report);
   const { narration, total: narrTotal } = await ensureNarration(projectId, scenes, report);
   scenes = getScenes(projectId);
   await ensureMedia(projectId, scenes, report);
   scenes = getScenes(projectId);
+  const kinds = scenes.map((sc) => getAsset(sc.asset_id)).reduce<Record<string, number>>((acc, a) => ((acc[`${a?.provider}/${a?.kind}`] = (acc[`${a?.provider}/${a?.kind}`] ?? 0) + 1), acc), {});
+  log(`Recursos: ${Object.entries(kinds).map(([k, n]) => `${k}×${n}`).join(", ")} (guardados para reutilizar)`);
 
   // ── Segmentos de video ──
   const total = narrTotal + 1.5; // cola final para respirar
   const segDir = projectDir(projectId, "segmentos");
   const D = scenes.map((sc, i) => (i < scenes.length - 1 ? scenes[i + 1].start : total) - (i === 0 ? 0 : sc.start));
-  const CHUNK = 8;
+  const CHUNK = prof.chunk;
   const chunks: string[] = [];
   const keep = new Set<string>();
   const nChunks = Math.ceil(scenes.length / CHUNK);
@@ -216,13 +250,25 @@ export async function produce(projectId: string, report: Reporter) {
       const fade = { in: k === 0 && c > 0, out: last && c < nChunks - 1 };
       const key = segKey(a.local_path, dur.toFixed(3), i, w, h, fade, "v4");
       const out = path.join(segDir, `escena-${String(i).padStart(4, "0")}-${key}.mp4`);
-      await renderSegment({ file: a.local_path, kind: a.kind, duration: dur, motion: i * 7 + (i % 3) }, w, h, out, fade);
+      const reused = exists(out);
+      const t0 = Date.now();
+      const seg = { file: a.local_path, kind: a.kind, duration: dur, motion: i * 7 + (i % 3) };
+      try {
+        await renderSegment(seg, w, h, out, fade, { threads: prof.threads });
+      } catch (e) {
+        if (!(e instanceof ProcessError && e.killedBySystem)) throw e;
+        // Reintento automático con el modo de memoria mínima (misma calidad final).
+        log(`Escena ${i + 1}: ${e.message} Reintentando en modo de memoria mínima…`);
+        report(0.55 + (0.3 * i) / scenes.length, `Editando escena ${i + 1} de ${scenes.length} (modo memoria mínima)`);
+        await renderSegment(seg, w, h, out, fade, { safe: true });
+      }
+      log(`Escena ${i + 1}/${scenes.length}: ${reused ? "reutilizada" : `editada en ${((Date.now() - t0) / 1000).toFixed(1)} s`} · ${a.provider} ${a.kind} · ${dur.toFixed(1)} s · memoria ${containerMemoryUsedMB() ?? "?"} MB`);
       files.push(out);
       durs.push(dur);
       keep.add(out);
     }
     const chunkOut = path.join(segDir, `bloque-${c}-${segKey(files, durs)}.mp4`);
-    await xfadeJoin(files, durs, chunkOut, c * 5);
+    await withMemoryRetry(log, `Unión de escenas (bloque ${c + 1})`, (threads) => xfadeJoin(files, durs, chunkOut, c * 5, threads), prof.threads);
     chunks.push(chunkOut);
     keep.add(chunkOut);
   }
@@ -255,7 +301,8 @@ export async function produce(projectId: string, report: Reporter) {
   const safeName = p.title.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").slice(0, 60) || "video";
   const out = path.join(outDir, `${safeName}-${s.format.replace(":", "x")}-${s.resolution}p.mp4`);
   fs.rmSync(out, { force: true });
-  await finalPass({
+  await withMemoryRetry(log, "Render final", (threads) => finalPass({
+    threads,
     video: joined,
     narration,
     music: music ? { file: music.file, volume: s.musicVolume } : null,
@@ -265,7 +312,7 @@ export async function produce(projectId: string, report: Reporter) {
     out,
     height: Math.min(w, h),
     onProgress: (x) => report(0.86 + 0.1 * x, `Render final (${Math.round(x * 100)} %)`),
-  });
+  }), prof.threads);
   fs.rmSync(joined, { force: true });
   // Ahorro de espacio en el servidor: los segmentos intermedios ocupan ~1 GB por video.
   if (process.env.KEEP_SEGMENTS !== "si") {
@@ -325,4 +372,15 @@ export async function produce(projectId: string, report: Reporter) {
   });
   report(1, `Video listo en ${Math.round((Date.now() - started) / 1000)} s`);
   return out;
+}
+
+/** Ejecuta un paso de FFmpeg; si el sistema lo detiene por memoria, lo repite con 1 hilo. */
+async function withMemoryRetry<T>(log: (m: string) => void, label: string, fn: (threads: number) => Promise<T>, threads: number): Promise<T> {
+  try {
+    return await fn(threads);
+  } catch (e) {
+    if (!(e instanceof ProcessError && e.killedBySystem) || threads <= 1) throw e;
+    log(`${label}: ${e.message} Reintentando con memoria mínima…`);
+    return fn(1);
+  }
 }

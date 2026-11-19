@@ -51,8 +51,8 @@ export default function Batch() {
     <div className="space-y-5">
       <h1 className="font-serif text-2xl font-extrabold text-white">Producción masiva</h1>
       <p className="text-sm text-zinc-400">Pegue varios artículos separados por una línea con tres guiones (---). Se creará un proyecto por artículo y se producirán uno tras otro, hasta 12 por día.</p>
-      <div className="grid gap-5 lg:grid-cols-5">
-        <Card className="lg:col-span-3" title="Artículos" right={<span className="text-sm font-bold text-gold">{articles.length} detectados</span>}>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
+        <Card className="min-w-0 lg:col-span-3" title="Artículos" right={<span className="text-sm font-bold text-gold">{articles.length} detectados</span>}>
           <textarea className={`${inputCls} min-h-80 font-mono text-xs`} value={text} onChange={(e) => setText(e.target.value)} placeholder={"Primer artículo…\n---\nSegundo artículo…\n---\nTercer artículo…"} />
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <Field label="Duración">
@@ -83,7 +83,7 @@ export default function Batch() {
             🎬 Producir {articles.length || ""} videos
           </Button>
         </Card>
-        <Card className="lg:col-span-2" title="Cola de producción">
+        <Card className="min-w-0 lg:col-span-2" title="Cola de producción">
           {jobs.length === 0 && <p className="text-sm text-zinc-500">No hay trabajos recientes.</p>}
           <ul className="space-y-3">
             {jobs.map((j) => (

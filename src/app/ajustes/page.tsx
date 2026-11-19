@@ -63,6 +63,7 @@ export default function Settings() {
       <Alert kind="info">
         🔒 Las claves se guardan solo en su servidor (archivo <code>secrets.json</code> del disco de datos, que nunca se sube a GitHub) y nunca se envían al navegador: aquí solo verá los últimos caracteres.
       </Alert>
+      <ServerInfo />
       {msg && <Alert kind="ok">{msg}</Alert>}
       {err && <Alert kind="error">{err}</Alert>}
 
@@ -386,5 +387,23 @@ function VoiceCheck() {
       </Button>
       {r && <span className="text-xs text-gold">{r}</span>}
     </div>
+  );
+}
+
+function ServerInfo() {
+  const [st, setSt] = useState<{ server?: { summary: string; persistent: boolean | null } } | null>(null);
+  useEffect(() => {
+    api<{ server?: { summary: string; persistent: boolean | null } }>("/api/status").then(setSt).catch(() => undefined);
+  }, []);
+  if (!st?.server) return null;
+  return (
+    <>
+      {st.server.persistent === false && (
+        <Alert kind="error">
+          ⚠️ El servidor no tiene un disco persistente conectado: las claves, la configuración y los videos se perderán en la próxima actualización. En Railway: clic derecho sobre el servicio → <b>Attach Volume</b> → ruta <code>/data</code>.
+        </Alert>
+      )}
+      <p className="text-xs text-zinc-500">🖥️ {st.server.summary}{st.server.persistent ? " · datos guardados en disco persistente ✓" : ""}</p>
+    </>
   );
 }

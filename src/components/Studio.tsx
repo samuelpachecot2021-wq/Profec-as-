@@ -224,10 +224,10 @@ export function Studio({ projectId: initialId }: { projectId?: string }) {
       {error && <Alert kind="error">{error}</Alert>}
       {info && <Alert kind="ok">{info}</Alert>}
 
-      <div className="grid gap-5 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
         {/* ── Columna izquierda ── */}
-        <div className="space-y-5 lg:col-span-3">
-          <Card step="1" title="Contenido" right={project && <span className="truncate text-xs text-zinc-500">{project.title}</span>}>
+        <div className="min-w-0 space-y-5 lg:col-span-3">
+          <Card step="1" title="Contenido" right={project && <span className="block truncate text-xs text-zinc-500">{project.title}</span>}>
             <div className="mb-3 flex flex-wrap gap-2">
               {KINDS.map((k) => (
                 <button key={k.value} onClick={() => setKind(k.value)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${kind === k.value ? "border-gold bg-gold/15 text-gold" : "border-line text-zinc-400"}`}>
@@ -346,7 +346,7 @@ export function Studio({ projectId: initialId }: { projectId?: string }) {
         </div>
 
         {/* ── Columna derecha ── */}
-        <div className="space-y-5 lg:col-span-2">
+        <div className="min-w-0 space-y-5 lg:col-span-2">
           <Card step="4" title="Producción">
             {job ? (
               <div className="space-y-3">
@@ -359,6 +359,20 @@ export function Studio({ projectId: initialId }: { projectId?: string }) {
                 </div>
                 <p className="text-sm text-zinc-400">{job.step}</p>
                 {job.status === "error" && <Alert kind="error">{job.error}</Alert>}
+                {(job.status === "error" || job.status === "cancelado") && (
+                  <Button variant="gold" big className="w-full" onClick={genVideo} loading={busy === "video"}>
+                    ▶️ Reanudar producción
+                  </Button>
+                )}
+                {(job.status === "error" || job.status === "cancelado") && (
+                  <p className="text-xs text-zinc-500">Se reutilizan el guion, la narración, las imágenes y las escenas ya editadas: no se vuelven a gastar créditos de ElevenLabs.</p>
+                )}
+                {job.log && (
+                  <details className="rounded-xl border border-line bg-ink p-2" open={job.status === "error"}>
+                    <summary className="cursor-pointer text-xs font-semibold text-zinc-400">Registro detallado</summary>
+                    <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap [overflow-wrap:anywhere] font-mono text-[11px] leading-relaxed text-zinc-400 scroll-thin">{job.log}</pre>
+                  </details>
+                )}
                 {running && (
                   <Button variant="ghost" onClick={cancel}>
                     Cancelar

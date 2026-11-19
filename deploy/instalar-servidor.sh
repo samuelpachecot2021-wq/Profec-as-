@@ -27,7 +27,7 @@ if [ ! -f .env ]; then
 ADMIN_USER=${U}
 ADMIN_PASSWORD=${P}
 DOMAIN=${DOMAIN}
-MAX_CONCURRENT_JOBS=2
+MAX_CONCURRENT_JOBS=1
 ENV
 fi
 set -a; . ./.env; set +a

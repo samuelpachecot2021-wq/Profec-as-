@@ -76,6 +76,7 @@ export default function Projects() {
                     </div>
                   )}
                   {st === "error" && <p className="mt-1 line-clamp-2 text-xs text-red-300">{p.error}</p>}
+                  {(st === "error" || st === "cancelado") && <p className="mt-1 text-xs font-semibold text-gold">▶️ Abrir para reanudar la producción</p>}
                   <p className="mt-1 text-xs text-zinc-500">
                     {new Date(p.updated_at.replace(" ", "T") + "Z").toLocaleString("es")}
                     {p.spent_cost > 0 && ` · $${p.spent_cost.toFixed(2)}`}

@@ -1,6 +1,10 @@
-import os from "node:os";
+import fs from "node:fs";
+import path from "node:path";
+import { DATA_DIR } from "./paths";
+import { renderProfile, resourceSummary } from "./resources";
+import { ProcessError } from "./util";
 import { db } from "./db";
-import { produce } from "./pipeline";
+import { produce, type Reporter } from "./pipeline";
 import { getProject, updateProject, type JobRow } from "./projects";
 import { getSetting } from "./settings";
 import { notifyAll } from "./push";
@@ -15,9 +19,34 @@ class Cancelled extends Error {}
 
 /** Videos que se producen a la vez. Por defecto, según los núcleos del servidor. */
 export function maxConcurrent() {
-  const env = parseInt(process.env.MAX_CONCURRENT_JOBS || "", 10);
-  if (env > 0) return Math.min(env, 6);
-  return Math.max(1, Math.min(3, Math.floor(os.cpus().length / 2)));
+  // Según CPU y MEMORIA reales del contenedor (ver resources.ts): evita que el sistema detenga FFmpeg.
+  return renderProfile().concurrency;
+}
+
+/** Guarda un registro detallado del error en el disco de datos (data/logs/). */
+function writeErrorLog(job: JobRow, e: unknown) {
+  try {
+    const dir = path.join(DATA_DIR, "logs");
+    fs.mkdirSync(dir, { recursive: true });
+    const lines = [
+      `══ ${new Date().toISOString()} · proyecto ${job.project_id} · trabajo ${job.id} · intento ${job.attempts + 1}`,
+      `Servidor: ${resourceSummary()}`,
+      `Error: ${e instanceof Error ? e.message : String(e)}`,
+    ];
+    if (e instanceof ProcessError) {
+      lines.push(`Proceso: ${e.cmd} · código ${e.code} · señal ${e.signal ?? "-"}`);
+      lines.push(`Comando: ${e.cmd} ${e.args.map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(" ").slice(0, 3000)}`);
+      lines.push(`Salida de ${e.cmd} (final):\n${e.stderrTail}`);
+    } else if (e instanceof Error && e.stack) lines.push(e.stack);
+    const text = lines.join("\n") + "\n\n";
+    fs.appendFileSync(path.join(dir, "errores.log"), text);
+    fs.appendFileSync(path.join(dir, `proyecto-${job.project_id}.log`), text);
+    // el archivo general no crece sin límite
+    const general = path.join(dir, "errores.log");
+    if (fs.statSync(general).size > 5_000_000) fs.writeFileSync(general, fs.readFileSync(general, "utf8").slice(-2_000_000));
+  } catch (err) {
+    console.warn("No se pudo escribir el registro de errores", err);
+  }
 }
 
 export function enqueue(projectId: string, type = "produce") {
@@ -96,7 +125,7 @@ async function runJob(job: JobRow) {
   const log = (msg: string) =>
     db().prepare("UPDATE jobs SET log = substr(log || ? , -20000), updated_at = datetime('now') WHERE id = ?").run(`${new Date().toLocaleTimeString("es")} ${msg}\n`, job.id);
   let lastStep = "";
-  const report = (progress: number, step: string) => {
+  const report: Reporter = (progress: number, step: string) => {
     const st = db().prepare("SELECT status FROM jobs WHERE id = ?").get(job.id) as { status: string } | undefined;
     if (!st || st.status === "cancelado") throw new Cancelled("Cancelado por la usuaria");
     db().prepare("UPDATE jobs SET progress = ?, step = ?, updated_at = datetime('now') WHERE id = ?").run(progress, step, job.id);
@@ -106,6 +135,8 @@ async function runJob(job: JobRow) {
       log(step);
     }
   };
+  report.log = log;
+  log(`Inicio (intento ${job.attempts}). ${resourceSummary()}`);
   try {
     await produce(job.project_id, report);
     db().prepare("UPDATE jobs SET status = 'completado', progress = 1, updated_at = datetime('now') WHERE id = ?").run(job.id);
@@ -118,6 +149,9 @@ async function runJob(job: JobRow) {
     } else {
       console.error(`Trabajo ${job.id} falló:`, e);
       log(`ERROR: ${msg}`);
+      if (e instanceof ProcessError && e.stderrTail) log(`Detalle de ${e.cmd}: ${e.stderrTail.trim().split("\n").slice(-4).join(" | ").slice(0, 600)}`);
+      log("Puede pulsar «Reanudar producción»: la narración, las imágenes y las escenas ya hechas se reutilizan sin gastar créditos.");
+      writeErrorLog(job, e);
       db().prepare("UPDATE jobs SET status = 'error', error = ?, updated_at = datetime('now') WHERE id = ?").run(msg.slice(0, 2000), job.id);
       updateProject(job.project_id, { status: "error", error: msg.slice(0, 2000) });
       const p = getProject(job.project_id);

@@ -2,7 +2,19 @@ import path from "node:path";
 import fs from "node:fs";
 
 export const ROOT = process.cwd();
-export const DATA_DIR = process.env.PROFECIA_DATA_DIR || path.join(ROOT, "data");
+/**
+ * Carpeta de datos persistente (proyectos, videos, claves, configuración).
+ * En Railway se usa automáticamente el disco conectado (RAILWAY_VOLUME_MOUNT_PATH),
+ * así nada se pierde al publicar actualizaciones.
+ */
+export const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || process.env.PROFECIA_DATA_DIR || path.join(ROOT, "data");
+
+/** ¿Los datos sobreviven a las actualizaciones? null = no se puede saber (uso local). */
+export function storagePersistent(): boolean | null {
+  if (process.env.RAILWAY_VOLUME_MOUNT_PATH) return true;
+  if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID) return false;
+  return null;
+}
 export const PROJECTS_DIR = path.join(DATA_DIR, "projects");
 export const MUSIC_DIR = path.join(DATA_DIR, "music");
 export const CACHE_DIR = path.join(DATA_DIR, "cache");
