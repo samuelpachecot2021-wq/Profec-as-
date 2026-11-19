@@ -3,11 +3,11 @@ import path from "node:path";
 import { db } from "./db";
 import { getSetting } from "./settings";
 import { downloadTo, fetchWithTimeout, run, exists, hash } from "./util";
-import { projectDir } from "./paths";
+import { projectDir, DATA_DIR, publicUrl } from "./paths";
 import { assertCanSpend, recordCost } from "./costs";
 
 export type Candidate = {
-  provider: "pexels" | "pixabay" | "unsplash" | "wikimedia" | "nasa" | "ia" | "local" | "propio";
+  provider: "pexels" | "pixabay" | "unsplash" | "wikimedia" | "nasa" | "biblioteca" | "ia" | "local" | "propio";
   kind: "video" | "image";
   externalId: string;
   url: string; // archivo a descargar
@@ -163,6 +163,39 @@ async function nasa(query: string): Promise<Candidate[]> {
   return out;
 }
 
+// ───────────────────────── Biblioteca propia ─────────────────────────
+
+export const LIBRARY_DIR = path.join(DATA_DIR, "biblioteca");
+fs.mkdirSync(LIBRARY_DIR, { recursive: true });
+const normTxt = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+/** Busca en la biblioteca propia por palabras del nombre del archivo. */
+async function biblioteca(query: string): Promise<Candidate[]> {
+  const files = fs.readdirSync(LIBRARY_DIR).filter((f) => /\.(jpe?g|png|webp|mp4|mov|webm)$/i.test(f));
+  const terms = normTxt(query).split(/[^a-z0-9]+/).filter((t) => t.length > 2);
+  return files
+    .map((f) => ({ f, score: terms.reduce((a, t) => a + (normTxt(f).includes(t) ? 1 : 0), 0) }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map(({ f }) => {
+      const full = path.join(LIBRARY_DIR, f);
+      return {
+        provider: "biblioteca" as const,
+        kind: /\.(mp4|mov|webm)$/i.test(f) ? ("video" as const) : ("image" as const),
+        externalId: f,
+        url: full,
+        thumb: publicUrl(full),
+        license: "Biblioteca propia (licencia verificada por la usuaria)",
+        attribution: `Biblioteca propia: ${f}`,
+      };
+    });
+}
+
+export function isLibraryPath(p: string) {
+  const abs = path.resolve(p);
+  return abs.startsWith(path.resolve(LIBRARY_DIR) + path.sep) && fs.existsSync(abs);
+}
+
 // ───────────────────────── Imagen generada con IA ─────────────────────────
 
 async function aiImage(prompt: string, orientation: string, dest: string, projectId: string) {
@@ -224,7 +257,7 @@ export type SearchOpts = {
   query: string;
   orientation: "landscape" | "portrait" | "square";
   preferVideo: boolean;
-  sources: { pexels: boolean; pixabay: boolean; unsplash: boolean; wikimedia: boolean; nasa: boolean };
+  sources: { pexels: boolean; pixabay: boolean; unsplash: boolean; wikimedia: boolean; nasa: boolean; biblioteca?: boolean };
   exclude: Set<string>;
 };
 
@@ -235,10 +268,11 @@ export async function searchCandidates(o: SearchOpts): Promise<Candidate[]> {
   if (o.sources.pixabay) tasks.push(safe(pixabay(o.query, o.orientation, o.preferVideo)));
   if (o.sources.unsplash) tasks.push(safe(unsplash(o.query, o.orientation)));
   if (o.sources.wikimedia) tasks.push(safe(wikimedia(o.query)));
+  if (o.sources.biblioteca !== false) tasks.push(safe(biblioteca(o.query)));
   if (o.sources.nasa && /space|earth|star|sky|planet|moon|sun|galaxy|universe|night/i.test(o.query)) tasks.push(safe(nasa(o.query)));
   const all = (await Promise.all(tasks)).flat().filter((c) => !o.exclude.has(`${c.provider}:${c.externalId}`));
   // Prioridad: videos primero (si se prefieren), luego por proveedor
-  const rank = (c: Candidate) => (o.preferVideo && c.kind === "video" ? 0 : 10) + ["pexels", "pixabay", "unsplash", "wikimedia", "nasa"].indexOf(c.provider);
+  const rank = (c: Candidate) => (c.provider === "biblioteca" ? -20 : 0) + (o.preferVideo && c.kind === "video" ? 0 : 10) + ["pexels", "pixabay", "unsplash", "wikimedia", "nasa"].indexOf(c.provider);
   // intercala para variar proveedores
   return all.sort((a, b) => rank(a) - rank(b));
 }
@@ -254,6 +288,10 @@ export function insertAsset(projectId: string, c: Omit<Candidate, "url"> & { url
 
 export async function downloadCandidate(projectId: string, c: Candidate): Promise<number> {
   const dir = projectDir(projectId, "media");
+  if (c.provider === "biblioteca") {
+    if (!isLibraryPath(c.url)) throw new Error("Archivo de biblioteca no encontrado");
+    return insertAsset(projectId, { ...c, localPath: path.resolve(c.url) });
+  }
   const ext = c.kind === "video" ? ".mp4" : /\.png(\?|$)/i.test(c.url) ? ".png" : ".jpg";
   const dest = path.join(dir, `${c.provider}-${hash(c.externalId)}${ext}`);
   if (!exists(dest)) await downloadTo(c.url, dest, c.headers);

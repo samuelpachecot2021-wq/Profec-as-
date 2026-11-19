@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { MUSIC_STYLES } from "@/lib/options";
 import { Alert, Button, Card, Field, Select, api, inputCls } from "@/components/ui";
+import { usePush, useInstall } from "@/components/pwa";
 
 type S = {
   secrets: Record<string, { configured: boolean; masked: string; source: string }>;
@@ -92,7 +93,12 @@ export default function Settings() {
                       </Button>
                     )}
                   </div>
-                  {k.key === "AZURE_SPEECH_KEY" && <input className={`${inputCls} mt-2`} placeholder="Región de Azure (ej. eastus)" value={v("AZURE_SPEECH_REGION")} onChange={(e) => setV("AZURE_SPEECH_REGION", e.target.value)} />}
+                  {k.key === "AZURE_SPEECH_KEY" && (
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <input className={inputCls} placeholder="Región de Azure (ej. eastus)" value={v("AZURE_SPEECH_REGION")} onChange={(e) => setV("AZURE_SPEECH_REGION", e.target.value)} />
+                      <Select value={v("AZURE_FREE_TIER") || "no"} onChange={(x) => setV("AZURE_FREE_TIER", x)} options={[{ value: "no", label: "Plan de pago (S0)" }, { value: "si", label: "Plan gratuito F0 (sin costo)" }]} />
+                    </div>
+                  )}
                   {k.key === "ELEVENLABS_API_KEY" && <input className={`${inputCls} mt-2`} placeholder="ID de voz de ElevenLabs (masculina grave)" value={v("ELEVENLABS_VOICE_ID")} onChange={(e) => setV("ELEVENLABS_VOICE_ID", e.target.value)} />}
                   {k.key === "ANTHROPIC_API_KEY" && (
                     <div className="mt-2">
@@ -117,6 +123,7 @@ export default function Settings() {
         </Card>
 
         <div className="space-y-5">
+          <DeviceCard />
           <Card title="Control de costos">
             <p className="mb-3 text-sm text-zinc-300">
               Gastado este mes: <b className="text-gold">${s.monthSpent.toFixed(2)}</b> de ${s.monthlyBudget.toFixed(2)}
@@ -167,6 +174,7 @@ export default function Settings() {
           </Card>
 
           <MusicLibrary />
+          <MediaLibrary />
         </div>
       </div>
     </div>
@@ -221,6 +229,123 @@ function MusicLibrary() {
             </li>
           ))}
       </ul>
+    </Card>
+  );
+}
+
+function DeviceCard() {
+  const push = usePush();
+  const { canInstall, standalone, install } = useInstall();
+  const [msg, setMsg] = useState<string | null>(null);
+  return (
+    <Card title="Este dispositivo">
+      <div className="space-y-3 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-ink p-3">
+          <span>
+            <b className="block text-white">📲 Aplicación instalada</b>
+            <span className="text-xs text-zinc-500">{standalone ? "Está usando la app instalada ✓" : canInstall ? "Puede instalarla en la pantalla de inicio" : "En Android: menú ⋮ de Chrome → «Instalar aplicación»"}</span>
+          </span>
+          {canInstall && (
+            <Button variant="gold" onClick={install}>
+              Instalar
+            </Button>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-ink p-3">
+          <span>
+            <b className="block text-white">🔔 Avisos cuando un video esté listo</b>
+            <span className="text-xs text-zinc-500">
+              {{ activo: "Activados en este dispositivo ✓", inactivo: "Desactivados", bloqueado: "Bloqueados: actívelos en los ajustes del navegador (candado junto a la dirección → Notificaciones)", "no-soportado": "Este navegador no admite notificaciones (en iPhone, instale primero la app)", cargando: "Comprobando…" }[push.state]}
+            </span>
+          </span>
+          <div className="flex gap-2">
+            {push.state === "inactivo" && (
+              <Button variant="gold" onClick={push.enable}>
+                Activar
+              </Button>
+            )}
+            {push.state === "activo" && (
+              <>
+                <Button variant="ghost" onClick={async () => setMsg((await push.test()) > 0 ? "Notificación de prueba enviada." : "No se pudo enviar. Revise que el servidor tenga internet.")}>
+                  Probar
+                </Button>
+                <Button variant="ghost" onClick={push.disable}>
+                  Desactivar
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+        {(push.error || msg) && <p className="text-xs text-gold">{push.error || msg}</p>}
+      </div>
+    </Card>
+  );
+}
+
+function MediaLibrary() {
+  const [files, setFiles] = useState<{ name: string; url: string }[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const load = () => api<{ files: typeof files }>("/api/biblioteca").then((r) => setFiles(r.files));
+  useEffect(() => {
+    load();
+  }, []);
+  return (
+    <Card title={`Mi biblioteca de imágenes y clips (${files.length})`}>
+      <p className="mb-3 text-sm text-zinc-400">
+        Suba fotos o videos propios (o con licencia). Se usan primero cuando el nombre del archivo coincide con la escena. Ejemplo de nombres: <code>jerusalen-muro-noche.jpg</code>, <code>biblia-antigua-vela.mp4</code>, <code>dramatic-clouds-sky.jpg</code>.
+      </p>
+      <label className="block cursor-pointer rounded-xl border border-dashed border-gold/50 bg-ink p-4 text-center text-sm font-semibold text-gold">
+        {busy ? "Subiendo…" : "📤 Subir imágenes o videos"}
+        <input
+          type="file"
+          multiple
+          accept="image/*,video/*"
+          className="hidden"
+          onChange={async (e) => {
+            const list = e.target.files;
+            if (!list?.length) return;
+            const fd = new FormData();
+            for (const f of Array.from(list)) fd.append("files", f);
+            setBusy(true);
+            try {
+              const r = await api<{ saved: string[] }>("/api/biblioteca", { method: "POST", body: fd });
+              setMsg(`${r.saved.length} archivo(s) añadidos.`);
+              load();
+            } catch (er) {
+              setMsg((er as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+      </label>
+      {msg && <p className="mt-2 text-xs text-gold">{msg}</p>}
+      {files.length > 0 && (
+        <div className="mt-3 grid max-h-72 grid-cols-3 gap-2 overflow-y-auto scroll-thin sm:grid-cols-4">
+          {files.map((f) => (
+            <div key={f.name} className="group relative overflow-hidden rounded-lg border border-line">
+              {/\.(mp4|mov|webm)$/i.test(f.name) ? (
+                <video src={f.url} muted preload="metadata" className="aspect-video w-full object-cover" />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={f.url} alt="" loading="lazy" className="aspect-video w-full object-cover" />
+              )}
+              <p className="truncate px-1 py-0.5 text-[10px] text-zinc-400">{f.name}</p>
+              <button
+                onClick={async () => {
+                  if (!confirm(`¿Quitar ${f.name} de la biblioteca?`)) return;
+                  await api("/api/biblioteca", { method: "DELETE", json: { name: f.name } });
+                  load();
+                }}
+                className="absolute right-1 top-1 rounded bg-black/70 px-1.5 text-xs text-red-300"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </Card>
   );
 }

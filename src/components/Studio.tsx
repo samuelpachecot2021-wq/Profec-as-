@@ -6,6 +6,7 @@ import type { ProjectView } from "@/lib/projects";
 import { Alert, Button, Card, CostDialog, Field, Select, Toggle, api, inputCls, fmtTime, type Estimate } from "./ui";
 import { ScenesPanel } from "./ScenesPanel";
 import { SeoPanel } from "./SeoPanel";
+import { usePush } from "./pwa";
 
 type Status = { ffmpeg: boolean; llm: string; llmLabel: string; media: Record<string, boolean>; voices: Record<string, boolean>; aiImages: boolean };
 type AuthResp = { needsAuthorization?: boolean; estimate?: Estimate };
@@ -30,6 +31,7 @@ export function Studio({ projectId: initialId }: { projectId?: string }) {
   const [info, setInfo] = useState<string | null>(null);
   const [estimate, setEstimate] = useState<Estimate | null>(null);
   const pending = useRef<(() => void) | null>(null);
+  const push = usePush();
   const loaded = useRef(false);
 
   // ── carga inicial ──
@@ -362,7 +364,16 @@ export function Studio({ projectId: initialId }: { projectId?: string }) {
                     Cancelar
                   </Button>
                 )}
-                {running && <p className="text-xs text-zinc-500">Puede cerrar esta página: la producción continúa y se guarda. Si se apaga el equipo, se reanudará al volver a abrir la app.</p>}
+                {running && (
+                  <p className="text-xs text-zinc-500">
+                    El video se produce en el servidor: puede cerrar la app, apagar la pantalla o quedarse sin conexión. {push.state === "activo" ? "Recibirá una notificación al terminar." : ""}
+                  </p>
+                )}
+                {running && push.state === "inactivo" && (
+                  <Button variant="gold" className="w-full" onClick={push.enable}>
+                    🔔 Avisarme cuando esté listo
+                  </Button>
+                )}
               </div>
             ) : (
               <p className="text-sm text-zinc-400">Cuando pulse «Generar video completo», aquí verá el progreso paso a paso.</p>

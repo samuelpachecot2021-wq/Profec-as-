@@ -99,3 +99,32 @@ test("guion local sin inventar y con cierre evangelístico", async () => {
   assert.match(r.script, /Jesucristo/);
   assert.match(r.script, /Apocalipsis 13:16-17/);
 });
+
+test("sesiones firmadas: válidas, caducadas o falsificadas", async () => {
+  process.env.ADMIN_USER = "samuel";
+  process.env.ADMIN_PASSWORD = "Clave-de-prueba-123";
+  const { createSessionToken, verifySessionToken, safeEqual } = await import("../src/lib/session");
+  const tok = await createSessionToken("samuel");
+  assert.equal(await verifySessionToken(tok), "samuel");
+  const [payload, sig] = tok.split(".");
+  const forged = Buffer.from(JSON.stringify({ u: "intruso", exp: Date.now() + 1e9 })).toString("base64url");
+  assert.equal(await verifySessionToken(`${forged}.${sig}`), null);
+  assert.equal(await verifySessionToken(`${payload}.x${sig.slice(1)}`), null);
+  assert.equal(await verifySessionToken(undefined), null);
+  // al cambiar la contraseña, las sesiones anteriores dejan de valer
+  process.env.ADMIN_PASSWORD = "Otra-clave-456";
+  assert.equal(await verifySessionToken(tok), null);
+  assert.ok(safeEqual("abc", "abc") && !safeEqual("abc", "abd") && !safeEqual("abc", "abcd"));
+});
+
+test("notificaciones: claves VAPID y validación de suscripciones", async () => {
+  const { vapidKeys, saveSubscription, countSubscriptions, removeSubscription } = await import("../src/lib/push");
+  const k = await vapidKeys();
+  assert.ok(k.publicKey.length > 60 && k.privateKey.length > 30);
+  assert.deepEqual(await vapidKeys(), k, "las claves se conservan");
+  assert.throws(() => saveSubscription({ endpoint: "http://inseguro", keys: { p256dh: "a", auth: "b" } }));
+  saveSubscription({ endpoint: "https://fcm.googleapis.com/fcm/send/abc", keys: { p256dh: "a", auth: "b" } });
+  assert.equal(countSubscriptions(), 1);
+  removeSubscription("https://fcm.googleapis.com/fcm/send/abc");
+  assert.equal(countSubscriptions(), 0);
+});

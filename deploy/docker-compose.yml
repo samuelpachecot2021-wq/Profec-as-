@@ -1,0 +1,20 @@
+# Servidor propio (por ejemplo Oracle Cloud «Always Free»): app + HTTPS automático con Caddy.
+services:
+  app:
+    build: ..
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PROFECIA_DATA_DIR: /data
+    volumes:
+      - ./datos:/data
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy-data:/data
+    depends_on: [app]

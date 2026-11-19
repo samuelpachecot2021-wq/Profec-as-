@@ -28,6 +28,7 @@ export const PLAIN_KEYS = [
   "ALLOW_CC_BY_SA",
   "LLM_PROVIDER",
   "ELEVENLABS_VOICE_ID",
+  "AZURE_FREE_TIER",
 ] as const;
 
 export type SecretKey = (typeof SECRET_KEYS)[number];

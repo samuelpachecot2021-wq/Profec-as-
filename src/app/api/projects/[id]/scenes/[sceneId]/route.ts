@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { db } from "@/lib/db";
 import { getProject, projectSettings, type SceneRow } from "@/lib/projects";
-import { downloadCandidate, generateAiForScene, insertAsset, isAllowedMediaUrl, searchCandidates, AI_IMAGE_PRICE, type Candidate } from "@/lib/media";
+import { isLibraryPath, downloadCandidate, generateAiForScene, insertAsset, isAllowedMediaUrl, searchCandidates, AI_IMAGE_PRICE, type Candidate } from "@/lib/media";
 import { projectDir } from "@/lib/paths";
 import { monthSpent, monthlyBudget } from "@/lib/costs";
 import { updateProject } from "@/lib/projects";
@@ -83,7 +83,7 @@ export async function POST(req: Request, ctx: Ctx) {
       return ok({ candidates: cands.slice(0, 24) });
     }
     if (b.action === "use" && b.candidate) {
-      if (!isAllowedMediaUrl(b.candidate.url)) throw new Error("Origen del recurso no permitido");
+      if (b.candidate.provider === "biblioteca" ? !isLibraryPath(b.candidate.url) : !isAllowedMediaUrl(b.candidate.url)) throw new Error("Origen del recurso no permitido");
       const assetId = await downloadCandidate(id, b.candidate);
       setAsset(s.id, assetId);
       return ok({ assetId });

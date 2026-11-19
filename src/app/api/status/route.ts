@@ -1,7 +1,9 @@
 import { activeProvider, claudeModel } from "@/lib/llm";
 import { hasKey, getSetting } from "@/lib/settings";
 import { run } from "@/lib/util";
-import { startWorker } from "@/lib/queue";
+import os from "node:os";
+import { startWorker, maxConcurrent } from "@/lib/queue";
+import { piperAvailable } from "@/lib/tts";
 import { ok } from "@/lib/api";
 
 export const runtime = "nodejs";
@@ -32,5 +34,6 @@ export async function GET() {
     },
     voices: { elevenlabs: hasKey("ELEVENLABS_API_KEY"), azure: hasKey("AZURE_SPEECH_KEY") },
     aiImages: hasKey("OPENAI_API_KEY"),
+    server: { cpus: os.cpus().length, concurrency: maxConcurrent(), piper: piperAvailable() },
   });
 }

@@ -5,9 +5,12 @@ usted pega un artículo y la app escribe el guion, lo narra con voz grave de doc
 edita el video con efectos cinematográficos, añade música y subtítulos, y entrega el **MP4 listo**, **3 miniaturas** y los
 **títulos, descripción, hashtags y capítulos** para publicar.
 
+> 🌐 **¿Quiere usarla desde el teléfono con un enlace?** Siga la guía [**DESPLIEGUE.md**](DESPLIEGUE.md): publicación en la nube
+> (Railway o servidor gratuito de Oracle), costos, instalación como app en Android y notificaciones.
+
 ---
 
-## 🚀 Puesta en marcha (para no programadores)
+## 🚀 Puesta en marcha en su computadora (opcional)
 
 Solo hay que hacerlo **una vez**.
 
@@ -87,13 +90,15 @@ Nunca gasta más del 20 % sobre lo autorizado y se detiene al llegar al **presup
 
 ---
 
-## 📱 Usarla desde el teléfono o la tableta
+## 📱 Aplicación web instalable (PWA)
 
-1. Copie `.env.example` como `.env.local` y escriba una contraseña: `APP_PASSWORD=mi-clave-segura`
-2. Inicie con `npm run build && npm run start:red`
-3. En el teléfono (misma WiFi) abra `http://IP-DE-SU-COMPUTADORA:3000` e introduzca la contraseña.
+* Se instala en Android desde Chrome («Instalar app»), con icono propio y pantalla completa.
+* Inicio de sesión privado (`ADMIN_USER` / `ADMIN_PASSWORD`), sesiones firmadas de 30 días y bloqueo tras intentos fallidos.
+* Producción en el servidor en segundo plano, varios videos a la vez, reanudación automática tras reinicios.
+* Notificaciones push (estándar Web Push, gratis) cuando cada video termina.
+* Historial de proyectos y descarga directa de video, miniaturas y subtítulos al teléfono.
 
-Sin contraseña, la app solo acepta conexiones del propio equipo.
+Sin `ADMIN_PASSWORD`, la app solo acepta conexiones del propio equipo (uso local).
 
 ---
 
@@ -106,6 +111,7 @@ Sin contraseña, la app solo acepta conexiones del propio equipo.
 * Datos en `data/` (base de datos, proyectos, videos, claves en `data/secrets.json` con permisos 600). Esta carpeta **no se sube a Git**.
 * Cola de producción persistente con recuperación de trabajos interrumpidos y caché por paso (voz, recursos, escenas): volver a renderizar
   tras cambiar una imagen solo rehace lo necesario.
+* Despliegue: `Dockerfile` (Ubuntu 24.04 + FFmpeg 6.1 + Piper + eSpeak/MBROLA), `railway.json`, y `deploy/` (docker compose + Caddy con HTTPS para servidor propio).
 * Comandos: `npm run dev` (desarrollo) · `npm test` (pruebas) · `npm run prueba` (video de prueba sin claves ni internet) · `npm run typecheck`.
 
 ### Estructura

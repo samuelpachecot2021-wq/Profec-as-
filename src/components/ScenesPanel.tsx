@@ -168,7 +168,7 @@ function SceneModal({ scene, projectId, onClose, reload, onError }: { scene: Sce
           </div>
         )}
         {busy === "usar" && <p className="text-sm text-gold">Descargando recurso…</p>}
-        <p className="text-xs text-zinc-500">Después de cambiar imágenes pulse «Volver a renderizar con los cambios». Solo se rehacen las escenas modificadas.</p>
+        <p className="text-xs text-zinc-500">Después de cambiar imágenes pulse «Volver a renderizar con los cambios». La voz y las demás imágenes se reutilizan.</p>
       </div>
       <CostDialog
         estimate={estimate}

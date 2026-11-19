@@ -11,6 +11,7 @@ export const TTS_PRICE_PER_1K: Record<VoiceOption["provider"], number> = {
   elevenlabs: 0.18, // plan Creator aprox. (varía según plan)
   azure: 0.016, // voces neuronales: $16 por millón de caracteres
   edge: 0,
+  piper: 0,
   espeak: 0,
   silencio: 0,
 };
@@ -20,7 +21,10 @@ export function voiceById(id: string) {
 }
 
 export function estimateTtsCost(voiceId: string, chars: number) {
-  return (chars / 1000) * TTS_PRICE_PER_1K[voiceById(voiceId).provider];
+  const p = voiceById(voiceId).provider;
+  // Con el plan gratuito F0 de Azure (500 000 caracteres/mes) no hay cargos.
+  if (p === "azure" && getSetting("AZURE_FREE_TIER") === "si") return 0;
+  return (chars / 1000) * TTS_PRICE_PER_1K[p];
 }
 
 function xmlEscape(s: string) {
@@ -124,11 +128,53 @@ async function elevenTts(text: string, voiceId: string, speed: number, out: stri
 }
 
 async function espeakTts(text: string, voice: string, speed: number, out: string) {
-  const bin = await run("sh", ["-c", "command -v espeak-ng || command -v espeak || true"]);
-  if (!bin.trim()) throw new Error("eSpeak no está instalado en este equipo. Elija la voz gratuita «Jorge».");
+  const bin = (await run("sh", ["-c", "command -v espeak-ng || command -v espeak || true"])).trim();
+  if (!bin) throw new Error("eSpeak no está instalado en este equipo. Elija la voz gratuita «Jorge».");
   const raw = out.replace(/\.wav$/, ".raw.wav");
-  await run(bin.trim(), ["-v", `${voice}+m3`, "-s", String(Math.round(150 * speed)), "-p", "35", "-w", raw, text.replace(/\.\.\./g, ", ")]);
+  const clean = text.replace(/\.\.\.|…/g, ", ");
+  // Voz MBROLA masculina (más natural) si está instalada; si no, la voz básica.
+  const mbrola = voice.startsWith("mb-") && fs.existsSync(`/usr/share/mbrola/${voice.slice(3)}`);
+  const args = mbrola
+    ? ["-v", voice, "-s", String(Math.round(150 * speed)), "-p", "40", "-w", raw, clean]
+    : ["-v", "es-419+m3", "-s", String(Math.round(150 * speed)), "-p", "35", "-w", raw, clean];
+  await run(bin, args);
   await toWav(raw, out);
+  // MBROLA suena fino: se le da algo más de cuerpo y profundidad.
+  if (mbrola) {
+    const tmp = out.replace(/\.wav$/, ".eq.wav");
+    await run("ffmpeg", ["-y", "-v", "error", "-i", out, "-af", "asetrate=44100*0.94,aresample=44100,atempo=1.064,bass=g=4:f=140,acompressor=threshold=0.2:ratio=3", "-c:a", "pcm_s16le", tmp]);
+    fs.renameSync(tmp, out);
+  }
+  fs.rmSync(raw, { force: true });
+}
+
+/** La voz elegida no responde y existe una alternativa gratuita para todo el video. */
+export class VoiceUnavailable extends Error {
+  constructor(public fallbackVoiceId: string, reason: string) {
+    super(`Voz no disponible (${reason}); se usará ${fallbackVoiceId}`);
+  }
+}
+
+/** Directorio de voces Piper (se instalan en la imagen Docker del servidor). */
+export function piperModel(voice: string) {
+  const dir = process.env.PIPER_VOICES_DIR || "/opt/piper/voices";
+  return path.join(dir, `${voice}.onnx`);
+}
+
+export function piperAvailable(voice = "es_MX-ald-medium") {
+  return fs.existsSync(piperModel(voice));
+}
+
+async function piperTts(text: string, voice: string, speed: number, out: string) {
+  const model = piperModel(voice);
+  if (!fs.existsSync(model)) throw new Error("La voz Piper no está instalada en este servidor.");
+  const bin = process.env.PIPER_BIN || "piper";
+  const raw = out.replace(/\.wav$/, ".piper.wav");
+  // length_scale > 1 = más lento y pausado (tono documental)
+  const lengthScale = (1.05 / speed).toFixed(3);
+  const input = text.replace(/\.\.\.|…/g, "... ").replace(/\s+/g, " ");
+  await run(bin, ["--model", model, "--output_file", raw, "--length_scale", lengthScale, "--sentence_silence", "0.35"], { input, timeoutMs: 10 * 60_000 });
+  await run("ffmpeg", ["-y", "-v", "error", "-i", raw, "-af", "bass=g=3:f=130,highpass=f=60", "-ac", "1", "-ar", "44100", "-c:a", "pcm_s16le", out]);
   fs.rmSync(raw, { force: true });
 }
 
@@ -150,7 +196,16 @@ export async function synthesize(opts: { text: string; voiceId: string; elevenVo
   const tmp = `${opts.out}.part.wav`;
   switch (v.provider) {
     case "edge":
-      await edgeTts(opts.text, v.voice, opts.speed, tmp);
+      try {
+        await edgeTts(opts.text, v.voice, opts.speed, tmp);
+      } catch (e) {
+        // Respaldo automático y gratuito: todo el video pasa a la voz Piper del servidor.
+        if (piperAvailable()) throw new VoiceUnavailable("piper-ald", String(e));
+        throw e;
+      }
+      break;
+    case "piper":
+      await piperTts(opts.text, v.voice, opts.speed, tmp);
       break;
     case "azure":
       await azureTts(opts.text, v.voice, opts.speed, tmp);

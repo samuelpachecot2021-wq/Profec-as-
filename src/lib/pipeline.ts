@@ -5,7 +5,7 @@ import { dims } from "./options";
 import { getProject, getScenes, projectSettings, updateProject, type SceneRow } from "./projects";
 import { generateScript, applyHouseRules, translateLines } from "./script";
 import { splitScenes, planScenes, groupBlocks, type Overlay } from "./scenes";
-import { synthesize } from "./tts";
+import { synthesize, VoiceUnavailable } from "./tts";
 import { findAssetForScene, getAsset } from "./media";
 import { musicFor } from "./music";
 import { buildAss, srtCues, toSrt, type TimedScene } from "./subtitles";
@@ -91,7 +91,17 @@ async function ensureNarration(projectId: string, scenes: SceneRow[], report: Re
       report(0.1 + (0.25 * b) / blocks.length, `Generando la voz en off (${b + 1}/${blocks.length})`);
       const text = blocks[b].map((i) => scenes[i].text).join(" ");
       const file = path.join(dir, `bloque-${hash(text, s.voiceId, s.speed, s.elevenVoiceId ?? "")}.wav`);
-      const duration = await synthesize({ text, voiceId: s.voiceId, elevenVoiceId: s.elevenVoiceId, speed: s.speed, out: file, projectId });
+      let duration: number;
+      try {
+        duration = await synthesize({ text, voiceId: s.voiceId, elevenVoiceId: s.elevenVoiceId, speed: s.speed, out: file, projectId });
+      } catch (e) {
+        if (!(e instanceof VoiceUnavailable)) throw e;
+        // Se cambia la voz de TODO el video para que no se mezclen voces distintas.
+        console.warn(e.message);
+        updateProject(projectId, { settings: JSON.stringify({ ...s, voiceId: e.fallbackVoiceId }) });
+        report(0.1, "La voz en línea no respondió: se usa la voz Piper del servidor");
+        return ensureNarration(projectId, scenes, report);
+      }
       results.push({ file, duration });
     }
     narration = path.join(dir, "narracion.wav");
@@ -146,6 +156,29 @@ async function ensureMedia(projectId: string, scenes: SceneRow[], report: Report
     upd.run(id, sc.id);
     sc.asset_id = id;
   }
+  reuseRealImages(scenes);
+}
+
+/**
+ * Si se agotaron las imágenes nuevas y alguna escena quedó con un fondo generado,
+ * se reutilizan fotos/clips reales del mismo video, sin repetirlos en escenas cercanas.
+ */
+function reuseRealImages(scenes: SceneRow[]) {
+  const assetOf = (sc: SceneRow) => getAsset(sc.asset_id);
+  const real = [...new Set(scenes.map((sc) => assetOf(sc)).filter((a) => a && !["local"].includes(a.provider)).map((a) => a!.id))];
+  if (real.length < 4) return; // muy pocas: mejor fondos variados que repeticiones evidentes
+  const uses = new Map<number, number>(real.map((id) => [id, 0]));
+  scenes.forEach((sc) => sc.asset_id && uses.has(sc.asset_id) && uses.set(sc.asset_id, uses.get(sc.asset_id)! + 1));
+  const upd = db().prepare("UPDATE scenes SET asset_id = ? WHERE id = ?");
+  scenes.forEach((sc, i) => {
+    if (sc.locked || assetOf(sc)?.provider !== "local") return;
+    const near = new Set(scenes.slice(Math.max(0, i - 3), i + 4).map((x) => x.asset_id));
+    const pick = real.filter((id) => !near.has(id)).sort((a, b) => uses.get(a)! - uses.get(b)!)[0];
+    if (!pick) return;
+    uses.set(pick, uses.get(pick)! + 1);
+    sc.asset_id = pick;
+    upd.run(pick, sc.id);
+  });
 }
 
 /** Producción completa del video. */
@@ -234,6 +267,10 @@ export async function produce(projectId: string, report: Reporter) {
     onProgress: (x) => report(0.86 + 0.1 * x, `Render final (${Math.round(x * 100)} %)`),
   });
   fs.rmSync(joined, { force: true });
+  // Ahorro de espacio en el servidor: los segmentos intermedios ocupan ~1 GB por video.
+  if (process.env.KEEP_SEGMENTS !== "si") {
+    for (const f of fs.readdirSync(segDir)) if (!f.startsWith("particulas-")) fs.rmSync(path.join(segDir, f), { force: true });
+  }
 
   // ── Subtítulos SRT ──
   report(0.96, "Exportando subtítulos SRT");

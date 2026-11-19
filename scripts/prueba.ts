@@ -19,7 +19,7 @@ async function main() {
       voiceId: process.env.VOZ || "silencio",
       resolution: Number(process.env.RES || 720) as 720,
       format: (process.env.FMT || "16:9") as "16:9",
-      sources: { pexels: false, pixabay: false, unsplash: false, wikimedia: false, nasa: false },
+      sources: { pexels: false, pixabay: false, unsplash: false, wikimedia: false, nasa: false, biblioteca: true },
       translateSubsEn: false,
     },
   });

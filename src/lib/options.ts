@@ -41,7 +41,7 @@ export const MUSIC_STYLES = [
 
 export type VoiceOption = {
   id: string;
-  provider: "edge" | "azure" | "elevenlabs" | "espeak" | "silencio";
+  provider: "edge" | "azure" | "elevenlabs" | "piper" | "espeak" | "silencio";
   label: string;
   voice: string;
   paid: boolean;
@@ -53,10 +53,11 @@ export const VOICES: VoiceOption[] = [
   { id: "edge-gonzalo", provider: "edge", voice: "es-CO-GonzaloNeural", label: "Gonzalo — masculina profunda, Colombia (gratis)", paid: false },
   { id: "edge-tomas", provider: "edge", voice: "es-AR-TomasNeural", label: "Tomás — masculina, Argentina (gratis)", paid: false },
   { id: "edge-dalia", provider: "edge", voice: "es-MX-DaliaNeural", label: "Dalia — femenina, México (gratis)", paid: false },
-  { id: "azure-jorge", provider: "azure", voice: "es-MX-JorgeNeural", label: "Azure · Jorge documental (de pago, estable)", paid: true },
+  { id: "azure-jorge", provider: "azure", voice: "es-MX-JorgeNeural", label: "Azure · Jorge documental (500 000 caracteres gratis al mes)", paid: true },
   { id: "azure-jorge-dramatic", provider: "azure", voice: "es-MX-JorgeNeural|serious", label: "Azure · Jorge estilo serio", paid: true },
   { id: "eleven-default", provider: "elevenlabs", voice: "", label: "ElevenLabs · voz configurada (de pago, la más humana)", paid: true, note: "Usa el ID de voz de ElevenLabs que elijas en Ajustes." },
-  { id: "espeak-es", provider: "espeak", voice: "es-419", label: "eSpeak local (sin internet, robótica)", paid: false },
+  { id: "piper-ald", provider: "piper", voice: "es_MX-ald-medium", label: "Piper · masculina México (gratis, en el servidor)", paid: false, note: "Voz neuronal de código abierto que funciona dentro del propio servidor: sin límites ni costos." },
+  { id: "espeak-es", provider: "espeak", voice: "mb-es2", label: "eSpeak/MBROLA local (sin internet, robótica)", paid: false },
   { id: "silencio", provider: "silencio", voice: "", label: "Sin voz (solo pruebas / narración propia)", paid: false },
 ];
 
@@ -81,7 +82,7 @@ export type ProjectSettings = {
   translateToSpanish: boolean;
   useAiImages: boolean;
   preferVideo: boolean;
-  sources: { pexels: boolean; pixabay: boolean; unsplash: boolean; wikimedia: boolean; nasa: boolean };
+  sources: { pexels: boolean; pixabay: boolean; unsplash: boolean; wikimedia: boolean; nasa: boolean; biblioteca: boolean };
 };
 
 export const DEFAULT_SETTINGS: ProjectSettings = {
@@ -98,7 +99,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   translateToSpanish: true,
   useAiImages: false,
   preferVideo: true,
-  sources: { pexels: true, pixabay: true, unsplash: true, wikimedia: true, nasa: true },
+  sources: { pexels: true, pixabay: true, unsplash: true, wikimedia: true, nasa: true, biblioteca: true },
 };
 
 export function dims(format: ProjectSettings["format"], res: number) {

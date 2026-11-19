@@ -53,10 +53,26 @@ export default function Help() {
           ))}
         </div>
       </Card>
-      <Card title="Usar la app desde el teléfono o la tableta">
-        <p className="text-sm leading-relaxed text-zinc-300">
-          Abra el archivo <code>.env.local</code>, escriba <code>APP_PASSWORD=una-contraseña</code>, guarde y ejecute <code>npm run start:red</code>. En el teléfono (misma red WiFi) abra <code>http://IP-DE-SU-COMPUTADORA:3000</code>. La contraseña protege su app.
-        </p>
+      <Card title="📲 Instalar la app en Android">
+        <ol className="list-inside list-decimal space-y-2 text-sm leading-relaxed text-zinc-300">
+          <li>Abra el enlace de su app en <b>Google Chrome</b> e inicie sesión.</li>
+          <li>
+            Pulse el botón dorado <b>«Instalar app»</b> (arriba). Si no aparece: menú <b>⋮</b> de Chrome → <b>«Instalar aplicación»</b>.
+          </li>
+          <li>Se crea el icono <b>Profecía Studio</b> en la pantalla de inicio. Se abre a pantalla completa.</li>
+          <li>
+            En <b>Ajustes → Este dispositivo</b> pulse <b>Activar</b> en los avisos para recibir una notificación cuando cada video esté listo.
+          </li>
+        </ol>
+      </Card>
+      <Card title="☁️ Producción en la nube">
+        <ul className="list-inside list-disc space-y-1 text-sm text-zinc-300">
+          <li>Los videos se producen en el servidor: puede cerrar la app, apagar la pantalla o quedarse sin conexión.</li>
+          <li>Se producen varios videos a la vez (hasta 12 al día, ajustable en Ajustes).</li>
+          <li>Si el servidor se reinicia, los trabajos pendientes se reanudan solos.</li>
+          <li>Los videos, miniaturas y subtítulos se descargan directamente a la carpeta «Descargas» del teléfono.</li>
+          <li>Si la voz gratuita en línea fallara, la app cambia sola a la voz Piper del servidor (también gratuita).</li>
+        </ul>
       </Card>
     </div>
   );
