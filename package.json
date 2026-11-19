@@ -1,0 +1,49 @@
+{
+  "name": "profecia-studio-ai",
+  "version": "1.0.0",
+  "description": "PROFECÍA STUDIO AI — producción automatizada de documentales cristianos y profecía bíblica",
+  "scripts": {
+    "dev": "next dev -H 127.0.0.1 -p 3000",
+    "build": "next build",
+    "start": "next start -H 127.0.0.1 -p 3000",
+    "start:red": "next start -H 0.0.0.0 -p 3000",
+    "iniciar": "npm run build && npm run start",
+    "prueba": "tsx scripts/prueba.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/samuelpachecot2021-wq/Profec-as-.git"
+  },
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/samuelpachecot2021-wq/Profec-as-/issues"
+  },
+  "homepage": "https://github.com/samuelpachecot2021-wq/Profec-as-#readme",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.10.0",
+    "better-sqlite3": "^13.2.0",
+    "mammoth": "^1.13.0",
+    "msedge-tts": "^2.1.1",
+    "next": "^15.5.29",
+    "pdf-parse": "^1.1.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.5",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "postcss": "^8.5.33",
+    "tailwindcss": "^4.3.5",
+    "tsx": "^4.23.15",
+    "typescript": "5.9"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  }
+}
