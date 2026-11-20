@@ -3,7 +3,7 @@ import { getProject, updateProject } from "../projects";
 import { insertAsset, getAsset } from "../media";
 import { projectDir } from "../paths";
 import { assertCanSpend, recordCost, monthSpent, monthlyBudget } from "../costs";
-import { hash, exists, sleep } from "../util";
+import { hash, exists, sleep, isDiskFull } from "../util";
 import { imageModel, videoModel, imageCostUSD, clipSeconds, videoCostUSD, PRICING_SOURCE, RUNWAY_CREDIT_USD, type Format } from "./pricing";
 import { generateImage } from "./images";
 import { createTask, waitTask, downloadOutput, RunwayError, runwayKey, imageDataUri } from "./runway";
@@ -325,6 +325,12 @@ export async function executePlan(projectId: string, plan: AiPlan, report: (p: n
       const err = e instanceof RunwayError ? e : null;
       // Problemas de cuenta: se detiene todo (sin cambiar a otro proveedor de pago). Se puede reanudar.
       if (err && ["sin_clave", "clave_invalida", "sin_creditos"].includes(err.code ?? "")) throw e;
+      // Disco lleno al guardar algo YA pagado: se detiene y se conserva la tarea de Runway,
+      // para volver a descargar el mismo resultado al reanudar sin pagar otra vez.
+      if (isDiskFull(e)) {
+        save();
+        throw e;
+      }
       if (e instanceof Error && /supera lo autorizado|presupuesto mensual/.test(e.message)) throw e;
       // Fallo de una escena (moderación, error del modelo): esa escena usa un recurso GRATUITO.
       it.status = "gratis";
@@ -372,8 +378,14 @@ export async function fallbackImageFor(projectId: string, plan: AiPlan, item: Pl
     log(`Toma ${item.gi + 1}: sin recurso gratuito adecuado → imagen IA de respaldo (${r.costUSD.toFixed(2)} USD).`);
     return id;
   } catch (e) {
+    if (isDiskFull(e)) throw e; // disco lleno: se detiene (no se oculta)
     log(`Toma ${item.gi + 1}: imagen IA de respaldo no disponible (${e instanceof Error ? e.message : e}); se mantiene el recurso gratuito.`);
     return null;
   }
 }
 
+
+/** Espacio (MB) que ocuparán las escenas IA pendientes del plan (imágenes ≈ 4 MB, clips ≈ 12 MB). */
+export function planDiskMB(plan: AiPlan) {
+  return plan.items.reduce((a, x) => (x.status === "hecho" || x.status === "gratis" ? a : a + (x.kind === "video" ? 16 : x.kind === "image" ? 4 : x.reserveUSD > 0 ? 4 : 0)), 0);
+}

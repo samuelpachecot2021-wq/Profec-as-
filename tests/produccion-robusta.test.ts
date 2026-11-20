@@ -36,10 +36,13 @@ const bin = path.join(tmp, "bin");
 fs.mkdirSync(bin);
 const KILL_ALL = path.join(tmp, "matar-todo");
 const KILL_MULTI = path.join(tmp, "matar-con-varios-hilos");
+const FAIL_FINAL_ENOSPC = path.join(tmp, "render-final-sin-disco");
 fs.writeFileSync(
   path.join(bin, "ffmpeg"),
   `#!/bin/sh
 case "$*" in
+  *loudnorm*)
+    if [ -f "${FAIL_FINAL_ENOSPC}" ]; then echo "Error writing trailer: No space left on device" >&2; echo "Conversion failed!" >&2; exit 228; fi;;
   *zoompan*|*-stream_loop*)
     if [ -f "${KILL_ALL}" ]; then kill -9 $$; fi
     if [ -f "${KILL_MULTI}" ]; then case "$*" in *"-threads 1 "*) ;; *) kill -9 $$;; esac; fi;;
@@ -130,4 +133,24 @@ test("las claves y la configuración se conservan", () => {
   assert.equal(getSetting("PEXELS_API_KEY"), "pexels-conservada-123456");
   assert.equal(getSetting("ELEVENLABS_API_KEY"), "clave-prueba-1234567890");
   assert.ok(fs.existsSync(path.join(DATA_DIR, "secrets.json")));
+});
+
+test("render final con código 228 (disco lleno): error claro y al reanudar solo se repite el render final", { timeout: 600_000 }, async () => {
+  saveSettings({ ELEVENLABS_PLAN: "suscripcion" });
+  const id = createProject({ text, settings: { duration: 30, resolution: 1080, format: "9:16", voiceId: "eleven-default", sources } });
+  fs.writeFileSync(FAIL_FINAL_ENOSPC, "1");
+  elevenCalls = 0;
+  await assert.rejects(produce(id, reporter()), (e: unknown) => e instanceof Error && /ENOSPC|disco del servidor/.test(e.message));
+  const spent = elevenCalls;
+  const segDir = path.join(DATA_DIR, "projects", id, "segmentos");
+  const blocks = fs.readdirSync(segDir).filter((f) => f.startsWith("bloque-"));
+  assert.ok(blocks.length >= 1, "los bloques válidos se conservan");
+  assert.ok(!fs.readdirSync(path.join(DATA_DIR, "projects", id, "salida")).some((f) => f.includes(".part")), "no queda un MP4 a medias");
+  fs.rmSync(FAIL_FINAL_ENOSPC);
+  logs.length = 0;
+  await produce(id, reporter()); // = «Reanudar producción»
+  assert.equal(elevenCalls, spent, "sin nuevas llamadas a ElevenLabs");
+  assert.ok(logs.filter((l) => /Bloque \d+\/\d+: reutilizado/.test(l)).length === blocks.length, "los bloques no se rehacen");
+  assert.ok(!logs.some((l) => /Escena \d+\/\d+: editada/.test(l)), "ninguna escena se vuelve a editar");
+  assert.ok(logs.some((l) => /MP4 verificado: 1080×1920/.test(l)), "MP4 verificado (imagen, sonido y duración)");
 });

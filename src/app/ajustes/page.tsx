@@ -406,6 +406,7 @@ function ServerInfo() {
         </Alert>
       )}
       <p className="text-xs text-zinc-500">🖥️ {st.server.summary}{st.server.persistent ? " · datos guardados en disco persistente ✓" : ""}</p>
+      <StorageInfo />
     </>
   );
 }
@@ -431,6 +432,45 @@ function RunwayBalance() {
         Comprobar clave y saldo
       </Button>
       {r && <span className="text-xs text-gold">{r}</span>}
+    </div>
+  );
+}
+
+function StorageInfo() {
+  const [r, setR] = useState<{ freeMB: number; totalMB: number; segmentsMB: number; mediaMB: number; outputsMB: number; cacheMB: number; libraryMB: number } | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api<typeof r>("/api/almacenamiento").then(setR).catch(() => undefined);
+  }, []);
+  if (!r || !r.totalMB) return null;
+  const low = r.freeMB < 1024;
+  return (
+    <div className={`rounded-xl border p-3 text-xs ${low ? "border-blood bg-blood/10 text-red-200" : "border-line bg-ink text-zinc-400"}`}>
+      <p>
+        💾 Disco: <b className="text-white">{r.freeMB.toLocaleString("es")} MB libres</b> de {r.totalMB.toLocaleString("es")} MB · videos terminados {r.outputsMB} MB · imágenes, clips y narraciones {r.mediaMB} MB · temporales del render {r.segmentsMB} MB · caché {r.cacheMB} MB
+        {low && " — queda poco espacio: un video de 8 minutos en 1080p necesita ~1 GB libre durante el render."}
+      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button
+          variant="ghost"
+          loading={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              const x = await api<{ freedMB: number; steps: string[]; report: typeof r }>("/api/almacenamiento", { method: "POST" });
+              setR(x.report);
+              setMsg(x.freedMB ? `Liberados ${x.freedMB} MB (${x.steps.join(" · ")}).` : "No había temporales que borrar.");
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Liberar espacio temporal
+        </Button>
+        {msg && <span className="text-gold">{msg}</span>}
+      </div>
+      <p className="mt-1 text-[11px] text-zinc-500">Nunca borra imágenes o videos de Runway, recursos descargados, narraciones ni videos terminados. Para más espacio: borre proyectos antiguos o amplíe el volumen en Railway.</p>
     </div>
   );
 }

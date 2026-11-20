@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { DATA_DIR } from "./paths";
 import { renderProfile, resourceSummary } from "./resources";
-import { ProcessError } from "./util";
+import { ProcessError, isDiskFull } from "./util";
+import { freeSpace, diskInfo } from "./disk";
 import { db } from "./db";
 import { produce, type Reporter } from "./pipeline";
 import { AwaitingAiAuthorization } from "./ai/plan";
@@ -113,7 +114,9 @@ async function loop() {
       const job = claim();
       if (job) {
         w.active.add(job.id);
-        void runJob(job).finally(() => w.active.delete(job.id));
+        void runJob(job)
+          .catch((e) => console.error(`Trabajo ${job.id}: error no controlado`, e))
+          .finally(() => w.active.delete(job.id));
         continue;
       }
     }
@@ -156,12 +159,32 @@ async function runJob(job: JobRow) {
       await notifyAll({ title: "💳 Autorice las escenas IA", body: `${p?.title ?? "Proyecto"}: ${e.plan.clips} clips y ${e.plan.images - e.plan.clips} imágenes · máx. ${e.plan.maxUSD.toFixed(2)} USD`, url: `/proyecto/${job.project_id}`, tag: `p-${job.project_id}` });
     } else {
       console.error(`Trabajo ${job.id} falló:`, e);
-      log(`ERROR: ${msg}`);
-      if (e instanceof ProcessError && e.stderrTail) log(`Detalle de ${e.cmd}: ${e.stderrTail.trim().split("\n").slice(-4).join(" | ").slice(0, 600)}`);
-      log("Puede pulsar «Reanudar producción»: la narración, las imágenes y las escenas ya hechas se reutilizan sin gastar créditos.");
-      writeErrorLog(job, e);
-      db().prepare("UPDATE jobs SET status = 'error', error = ?, updated_at = datetime('now') WHERE id = ?").run(msg.slice(0, 2000), job.id);
-      updateProject(job.project_id, { status: "error", error: msg.slice(0, 2000) });
+      // Con el disco lleno ni siquiera se podría guardar el error: primero se libera lo seguro.
+      if (isDiskFull(e)) {
+        const r = freeSpace({ keepProject: job.project_id });
+        console.warn(`Disco lleno: liberados ${r.freedMB} MB (${r.steps.join(" · ")})`);
+      }
+      const record = () => {
+        log(`ERROR: ${msg}`);
+        if (e instanceof ProcessError && e.stderrTail) log(`Detalle de ${e.cmd}: ${e.stderrTail.trim().split("\n").slice(-4).join(" | ").slice(0, 600)}`);
+        log(`Disco: ${JSON.stringify(diskInfo())} · ${resourceSummary()}`);
+        log("Puede pulsar «Reanudar producción»: la narración, las imágenes y las escenas ya hechas se reutilizan sin gastar créditos.");
+        writeErrorLog(job, e);
+        db().prepare("UPDATE jobs SET status = 'error', error = ?, updated_at = datetime('now') WHERE id = ?").run(msg.slice(0, 2000), job.id);
+        updateProject(job.project_id, { status: "error", error: msg.slice(0, 2000) });
+      };
+      try {
+        record();
+      } catch (dbErr) {
+        // último recurso: liberar también escenas intermedias de este proyecto y reintentar
+        console.error("No se pudo registrar el error:", dbErr);
+        freeSpace({});
+        try {
+          record();
+        } catch (again) {
+          console.error("El error no pudo guardarse en la base de datos:", again);
+        }
+      }
       const p = getProject(job.project_id);
       await notifyAll({ title: "⚠️ No se pudo terminar el video", body: `${p?.title ?? "Proyecto"}: ${msg.slice(0, 120)}`, url: `/proyecto/${job.project_id}`, tag: `p-${job.project_id}` });
     }

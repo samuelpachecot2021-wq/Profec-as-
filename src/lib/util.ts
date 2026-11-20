@@ -1,6 +1,9 @@
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { containerMemoryMB, containerMemoryUsedMB } from "./resources";
 
 export function uid() {
@@ -18,6 +21,25 @@ export function sleep(ms: number) {
 export class UserError extends Error {}
 
 /** Ejecuta un proceso y devuelve stdout. Lanza un error legible si falla. */
+/** FFmpeg devuelve los errores del sistema como 256 − errno (p. ej. 228 = −28 = ENOSPC). */
+const ERRNO: Record<number, string> = { 2: "ENOENT", 5: "EIO", 12: "ENOMEM", 13: "EACCES", 22: "EINVAL", 27: "EFBIG", 28: "ENOSPC", 32: "EPIPE", 34: "ERANGE" };
+const ERRNO_ES: Record<string, string> = {
+  ENOENT: "archivo no encontrado",
+  EIO: "error de lectura/escritura del disco",
+  ENOMEM: "memoria insuficiente",
+  EACCES: "permiso denegado",
+  EINVAL: "parámetro no válido",
+  EFBIG: "archivo demasiado grande",
+  ENOSPC: "sin espacio en disco",
+  EPIPE: "conexión interrumpida",
+  ERANGE: "valor fuera de rango",
+};
+
+/** ¿El fallo fue por disco lleno? */
+export function isDiskFull(e: unknown) {
+  return e instanceof Error && /ENOSPC|No space left on device|SQLITE_FULL|disk is full|disco del servidor/i.test(`${e.message} ${(e as { stderrTail?: string }).stderrTail ?? ""} ${(e as { code?: string }).code ?? ""}`);
+}
+
 /** Error de un proceso externo (FFmpeg…) con todos los detalles para el registro. */
 export class ProcessError extends Error {
   constructor(
@@ -45,7 +67,11 @@ function describeExit(cmd: string, code: number | null, signal: NodeJS.Signals |
     return `${name} fue detenido por el sistema (señal ${signal ?? "desconocida"}), casi siempre por falta de memoria${mem}.`;
   }
   const lines = err.trim().split("\n").filter(Boolean);
-  return `${name} terminó con código ${code}: ${lines.slice(-6).join(" | ").slice(-900)}`;
+  const errno = code !== null && code > 128 ? ERRNO[256 - code] : undefined;
+  if (errno === "ENOSPC" || /No space left on device/i.test(err))
+    return `${name} terminó con código ${code} (ENOSPC): el disco del servidor se llenó durante el render. ${lines.filter((l) => /No space|Error writing|Conversion failed/i.test(l)).slice(-3).join(" | ")}`;
+  const explain = errno ? ` (${errno}: ${ERRNO_ES[errno] ?? ""})` : "";
+  return `${name} terminó con código ${code}${explain}: ${lines.slice(-6).join(" | ").slice(-900)}`;
 }
 
 /** Ejecuta un proceso y devuelve stdout. Lanza ProcessError con detalles si falla. */
@@ -110,30 +136,30 @@ export async function fetchWithTimeout(url: string, init: RequestInit = {}, ms =
   }
 }
 
-/** Descarga en streaming a disco (sin cargar el archivo entero en memoria). */
+/**
+ * Descarga en streaming a disco (sin cargar el archivo entero en memoria).
+ * Cualquier error de escritura (p. ej. disco lleno, ENOSPC) se devuelve como error normal:
+ * nunca deja el proceso colgado ni provoca un error no capturado.
+ */
 export async function downloadTo(url: string, dest: string, headers: Record<string, string> = {}, maxBytes = 400_000_000) {
   const res = await fetchWithTimeout(url, { headers }, 120000);
   if (!res.ok || !res.body) throw new Error(`Descarga fallida (${res.status}) ${url}`);
   const len = Number(res.headers.get("content-length") || 0);
   if (len > maxBytes) throw new Error("Archivo demasiado grande");
   const tmp = `${dest}.part`;
-  const out = fs.createWriteStream(tmp);
   let total = 0;
+  const limit = new Transform({
+    transform(chunk: Buffer, _enc, cb) {
+      total += chunk.length;
+      cb(total > maxBytes ? new Error("Archivo demasiado grande") : null, chunk);
+    },
+  });
   try {
-    const reader = res.body.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.length;
-      if (total > maxBytes) throw new Error("Archivo demasiado grande");
-      if (!out.write(value)) await new Promise((r) => out.once("drain", r));
-    }
-    await new Promise<void>((resolve, reject) => out.end((e?: Error | null) => (e ? reject(e) : resolve())));
+    await pipeline(Readable.fromWeb(res.body as unknown as WebReadableStream<Uint8Array>), limit, fs.createWriteStream(tmp));
     if (total === 0) throw new Error("Descarga vacía");
     fs.renameSync(tmp, dest);
     return dest;
   } catch (e) {
-    out.destroy();
     fs.rmSync(tmp, { force: true });
     throw e;
   }

@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import os from "node:os";
+import { diskInfo } from "./disk";
 
 /**
  * Recursos REALES del contenedor (Railway, Docker…). os.cpus() devuelve los núcleos
@@ -88,5 +89,7 @@ export function threadArgs(threads: number) {
 export function resourceSummary() {
   const p = renderProfile();
   const used = containerMemoryUsedMB();
-  return `CPU asignadas: ${p.cpus} · memoria: ${used ?? "?"} / ${p.memoryMB} MB · hilos FFmpeg: ${p.threads} · videos simultáneos: ${p.concurrency}${p.lowMemory ? " · modo memoria reducida" : ""}`;
+  const d = diskInfo();
+  const disk = Number.isFinite(d.freeMB) ? ` · disco libre: ${d.freeMB} / ${d.totalMB} MB` : "";
+  return `CPU asignadas: ${p.cpus} · memoria: ${used ?? "?"} / ${p.memoryMB} MB · hilos FFmpeg: ${p.threads} · videos simultáneos: ${p.concurrency}${p.lowMemory ? " · modo memoria reducida" : ""}${disk}`;
 }

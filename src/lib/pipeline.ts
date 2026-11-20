@@ -9,14 +9,15 @@ import { synthesize, VoiceUnavailable, voiceCacheKey } from "./tts";
 import { findAssetForScene, getAsset } from "./media";
 import { musicFor } from "./music";
 import { buildAss, srtCues, toSrt, type TimedScene } from "./subtitles";
-import { renderSegment, xfadeJoin, concatFiles, particlesLayer, finalPass, concatNarration, XFADE, segKey } from "./render";
+import { renderSegment, xfadeJoin, particlesLayer, finalPass, concatNarration, XFADE, segKey, validDuration, compatibleStill, verifyOutput } from "./render";
+import { ensureSpace, estimateRenderMB, estimateFinalMB, freeSpace, diskInfo, DiskFullError } from "./disk";
 import { makeThumbnails } from "./thumbnails";
 import { generateSeo, fullDescription } from "./seo";
 import { activeProvider } from "./llm";
 import { projectDir } from "./paths";
-import { ffprobeDuration, hash, exists, ProcessError } from "./util";
+import { ffprobeDuration, hash, exists, ProcessError, isDiskFull } from "./util";
 import { renderProfile, resourceSummary, containerMemoryUsedMB } from "./resources";
-import { buildPlan, executePlan, fallbackImageFor, getPlan, savePlan, AwaitingAiAuthorization, type AiPlan } from "./ai/plan";
+import { buildPlan, executePlan, fallbackImageFor, getPlan, savePlan, planDiskMB, AwaitingAiAuthorization, type AiPlan } from "./ai/plan";
 
 /** Informa el progreso; `log` (opcional) añade una línea al registro detallado del trabajo. */
 export type Reporter = ((progress: number, step: string) => void) & { log?: (msg: string) => void };
@@ -269,6 +270,9 @@ async function ensureMedia(projectId: string, scenes: SceneRow[], total: number,
     }
     savePlan(projectId, plan);
     log(`Escenas IA (${plan.mode}): ${plan.clips} clips de video, ${plan.images - plan.clips} imágenes, ${plan.stock} con recursos gratuitos · autorizado hasta ${plan.maxUSD.toFixed(2)} USD`);
+    // Antes de pagar nada: debe haber disco para las escenas IA y para todo el render.
+    const shareVideo = plan.items.filter((x) => x.kind === "video").length / Math.max(1, plan.items.length);
+    ensureSpace(planDiskMB(plan) + estimateRenderMB(total, w, h, shareVideo), "La generación de escenas IA y el render", log, projectId);
     await executePlan(projectId, plan, report, log);
     // asigna a cada toma su escena IA ya generada
     for (const it of plan.items) {
@@ -393,50 +397,74 @@ export async function produce(projectId: string, report: Reporter) {
   const chunks: string[] = [];
   const keep = new Set<string>();
   const nChunks = Math.ceil(shots.length / CHUNK);
+  const videoShare = shots.filter((x) => x.asset.kind === "video").length / Math.max(1, shots.length);
+  // Espacio en disco ANTES de editar (causa del antiguo error 228 = ENOSPC).
+  const disk0 = ensureSpace(estimateRenderMB(total, w, h, videoShare), "La edición de escenas", log, projectId);
+  log(`Disco: ${disk0.freeMB} MB libres de ${disk0.totalMB} MB · necesarios ~${estimateRenderMB(total, w, h, videoShare)} MB`);
+  // Plan de bloques: nombres deterministas para poder reanudar solo lo pendiente.
+  const planned = shots.map((sh, i) => {
+    const c = Math.floor(i / CHUNK);
+    const k = i - c * CHUNK;
+    const last = k === Math.min(CHUNK, shots.length - c * CHUNK) - 1;
+    const dur = sh.duration + (last ? 0 : XFADE);
+    const fade = { in: k === 0 && c > 0, out: last && c < nChunks - 1 };
+    const key = segKey(sh.asset.local_path, dur.toFixed(3), i, w, h, fade, "v5", i === 0 ? "impacto" : "");
+    return { i, c, dur, fade, out: path.join(segDir, `toma-${String(i).padStart(4, "0")}-${key}.mp4`) };
+  });
   for (let c = 0; c < nChunks; c++) {
-    const idxs = shots.map((_, i) => i).slice(c * CHUNK, (c + 1) * CHUNK);
-    const files: string[] = [];
-    const durs: number[] = [];
-    for (let k = 0; k < idxs.length; k++) {
-      const i = idxs[k];
+    const part = planned.filter((x) => x.c === c);
+    const files = part.map((x) => x.out);
+    const durs = part.map((x) => x.dur);
+    const chunkOut = path.join(segDir, `bloque-${c}-${segKey(files, durs)}.mp4`);
+    const expected = durs.reduce((a2, d) => a2 + d, 0) - (part.length - 1) * XFADE;
+    keep.add(chunkOut);
+    chunks.push(chunkOut);
+    // Bloque ya terminado y verificado en un intento anterior: no se rehace nada.
+    const prev = await validDuration(chunkOut);
+    if (prev !== null && Math.abs(prev - expected) < 0.35) {
+      log(`Bloque ${c + 1}/${nChunks}: reutilizado (${prev.toFixed(1)} s)`);
+      continue;
+    }
+    if (exists(chunkOut)) fs.rmSync(chunkOut, { force: true }); // incompleto o dañado
+    for (const x of part) {
+      const i = x.i;
       report(0.55 + (0.3 * i) / shots.length, `Editando toma ${i + 1} de ${shots.length}`);
       const a = shots[i].asset;
-      const last = k === idxs.length - 1;
-      const dur = shots[i].duration + (last ? 0 : XFADE);
-      const fade = { in: k === 0 && c > 0, out: last && c < nChunks - 1 };
-      // La toma 0 lleva un acercamiento de impacto.
-      const key = segKey(a.local_path, dur.toFixed(3), i, w, h, fade, "v5", i === 0 ? "impacto" : "");
-      const out = path.join(segDir, `toma-${String(i).padStart(4, "0")}-${key}.mp4`);
-      const reused = exists(out);
+      const reused = exists(x.out) && (await validDuration(x.out)) !== null;
+      if (!reused) fs.rmSync(x.out, { force: true });
       const t0 = Date.now();
-      const seg = { file: a.local_path, kind: a.kind, duration: dur, motion: i === 0 ? -1 : i * 7 + (i % 3) };
-      try {
-        await renderSegment(seg, w, h, out, fade, { threads: prof.threads });
-      } catch (e) {
-        if (!(e instanceof ProcessError && e.killedBySystem)) throw e;
-        // Reintento automático con el modo de memoria mínima (misma calidad final).
-        log(`Escena ${i + 1}: ${e.message} Reintentando en modo de memoria mínima…`);
-        report(0.55 + (0.3 * i) / shots.length, `Editando toma ${i + 1} de ${shots.length} (modo memoria mínima)`);
-        await renderSegment(seg, w, h, out, fade, { safe: true });
-      }
-      log(`Escena ${i + 1}/${shots.length}: ${reused ? "reutilizada" : `editada en ${((Date.now() - t0) / 1000).toFixed(1)} s`} · ${a.provider} ${a.kind} · ${dur.toFixed(1)} s · memoria ${containerMemoryUsedMB() ?? "?"} MB`);
-      files.push(out);
-      durs.push(dur);
-      keep.add(out);
+      // imágenes: se comprueba que sean compatibles (y solo si hace falta se normalizan)
+      const file = a.kind === "image" ? await compatibleStill(a.local_path, w, h) : a.local_path;
+      const seg = { file, kind: a.kind, duration: x.dur, motion: i === 0 ? -1 : i * 7 + (i % 3) };
+      await withDiskRetry(log, `Escena ${i + 1}`, projectId, async () => {
+        try {
+          await renderSegment(seg, w, h, x.out, x.fade, { threads: prof.threads });
+        } catch (e) {
+          if (!(e instanceof ProcessError && e.killedBySystem)) throw e;
+          // Reintento automático con el modo de memoria mínima (misma calidad final).
+          log(`Escena ${i + 1}: ${e.message} Reintentando en modo de memoria mínima…`);
+          report(0.55 + (0.3 * i) / shots.length, `Editando toma ${i + 1} de ${shots.length} (modo memoria mínima)`);
+          await renderSegment(seg, w, h, x.out, x.fade, { safe: true });
+        }
+      });
+      log(`Escena ${i + 1}/${shots.length}: ${reused ? "reutilizada" : `editada en ${((Date.now() - t0) / 1000).toFixed(1)} s`} · ${a.provider} ${a.kind} · ${x.dur.toFixed(1)} s · memoria ${containerMemoryUsedMB() ?? "?"} MB · disco libre ${diskInfo().freeMB} MB`);
     }
-    const chunkOut = path.join(segDir, `bloque-${c}-${segKey(files, durs)}.mp4`);
-    await withMemoryRetry(log, `Unión de escenas (bloque ${c + 1})`, (threads) => xfadeJoin(files, durs, chunkOut, c * 5, threads), prof.threads);
-    chunks.push(chunkOut);
-    keep.add(chunkOut);
+    await withDiskRetry(log, `Unión de escenas (bloque ${c + 1})`, projectId, () =>
+      withMemoryRetry(log, `Unión de escenas (bloque ${c + 1})`, (threads) => xfadeJoin(files, durs, chunkOut, c * 5, threads), prof.threads),
+    );
+    const got = await validDuration(chunkOut);
+    if (got === null || Math.abs(got - expected) > 0.35) {
+      fs.rmSync(chunkOut, { force: true });
+      throw new Error(`El bloque ${c + 1} quedó incompleto (${got ?? 0} s de ${expected.toFixed(2)} s). Pulse «Reanudar producción».`);
+    }
+    // Bloque verificado: sus escenas ya no hacen falta (libera disco a medida que avanza).
+    for (const f of files) fs.rmSync(f, { force: true });
   }
-  // limpieza de segmentos obsoletos (de renders anteriores)
+  // limpieza de restos de renders anteriores
   for (const f of fs.readdirSync(segDir)) {
     const full = path.join(segDir, f);
-    if (!keep.has(full)) fs.rmSync(full, { force: true });
+    if (!keep.has(full) && !f.startsWith("particulas-")) fs.rmSync(full, { force: true });
   }
-  const joined = path.join(segDir, "unido.mp4");
-  fs.rmSync(joined, { force: true });
-  await concatFiles(chunks, joined);
 
   // ── Subtítulos y gráficos ──
   report(0.86, "Añadiendo subtítulos, textos y música");
@@ -461,9 +489,10 @@ export async function produce(projectId: string, report: Reporter) {
   const safeName = p.title.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").slice(0, 60) || "video";
   const out = path.join(outDir, `${safeName}-${s.format.replace(":", "x")}-${s.resolution}p.mp4`);
   fs.rmSync(out, { force: true });
-  await withMemoryRetry(log, "Render final", (threads) => finalPass({
+  ensureSpace(estimateFinalMB(total, w, h, videoShare), "El render final", log, projectId);
+  await withDiskRetry(log, "Render final", projectId, () => withMemoryRetry(log, "Render final", (threads) => finalPass({
     threads,
-    video: joined,
+    videoParts: chunks,
     narration,
     music: music ? { file: music.file, volume: s.musicVolume } : null,
     ass: assFile,
@@ -472,8 +501,10 @@ export async function produce(projectId: string, report: Reporter) {
     out,
     height: Math.min(w, h),
     onProgress: (x) => report(0.86 + 0.1 * x, `Render final (${Math.round(x * 100)} %)`),
-  }), prof.threads);
-  fs.rmSync(joined, { force: true });
+  }), prof.threads));
+  // Comprobación del resultado: imagen, sonido y duración correctos.
+  const check = await verifyOutput(out, { w, h, total });
+  log(`MP4 verificado: ${check.width}×${check.height}, ${check.duration.toFixed(2)} s (esperado ${total.toFixed(2)} s), sonido ${check.meanDb} dB · disco libre ${diskInfo().freeMB} MB`);
   // Ahorro de espacio en el servidor: los segmentos intermedios ocupan ~1 GB por video.
   if (process.env.KEEP_SEGMENTS !== "si") {
     for (const f of fs.readdirSync(segDir)) if (!f.startsWith("particulas-")) fs.rmSync(path.join(segDir, f), { force: true });
@@ -542,5 +573,29 @@ async function withMemoryRetry<T>(log: (m: string) => void, label: string, fn: (
     if (!(e instanceof ProcessError && e.killedBySystem) || threads <= 1) throw e;
     log(`${label}: ${e.message} Reintentando con memoria mínima…`);
     return fn(1);
+  }
+}
+
+/**
+ * Si un paso falla por disco lleno: libera temporales seguros (nunca recursos pagados) y lo repite
+ * una vez. Si sigue sin espacio, se detiene con un mensaje claro; lo ya hecho se conserva.
+ */
+async function withDiskRetry<T>(log: (m: string) => void, label: string, projectId: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (!isDiskFull(e)) throw e;
+    log(`${label}: ${e instanceof Error ? e.message : e}`);
+    const r = freeSpace({ keepProject: projectId });
+    log(`Disco lleno: liberados ${r.freedMB} MB (${r.steps.join(" · ") || "nada que liberar"}); quedan ${diskInfo().freeMB} MB. Reintentando una vez…`);
+    try {
+      return await fn();
+    } catch (e2) {
+      if (!isDiskFull(e2)) throw e2;
+      const d = diskInfo();
+      throw new DiskFullError(
+        `El disco del servidor está lleno (quedan ${d.freeMB} MB de ${d.totalMB} MB) durante: ${label}. Borre proyectos antiguos o amplíe el volumen en Railway (Settings → Volumes) y pulse «Reanudar producción»: se continuará desde aquí sin repetir lo ya generado.`,
+      );
+    }
   }
 }

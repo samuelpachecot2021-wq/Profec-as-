@@ -22,8 +22,7 @@ import { createProject, getProject, getScenes } from "../src/lib/projects";
 import { produce } from "../src/lib/pipeline";
 import { db } from "../src/lib/db";
 
-const PORT = 4799;
-process.env.RUNWAY_API_BASE = `http://127.0.0.1:${PORT}`;
+let PORT = 0; // puerto libre aleatorio (se fija al arrancar el simulador)
 process.env.RUNWAY_POLL_MS = "200";
 
 // ── Simulador de Runway ──
@@ -76,7 +75,9 @@ before(async () => {
       send(404, { error: "no route" });
     });
   });
-  await new Promise<void>((r) => server.listen(PORT, "127.0.0.1", () => r()));
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+  PORT = (server.address() as { port: number }).port;
+  process.env.RUNWAY_API_BASE = `http://127.0.0.1:${PORT}`;
 });
 after(() => server.close());
 

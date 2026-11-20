@@ -75,7 +75,8 @@ Las claves de Pexels, Claude, etc. es más sencillo ponerlas después desde la p
 
 ### 4. Añadir el disco donde se guardan los videos
 1. En el lienzo del proyecto, haga clic derecho sobre el servicio → **Attach Volume** (o *Settings → Volumes → Add Volume*).
-2. **Mount path:** `/data` · Tamaño: el que permita su plan (con 20–50 GB caben cientos de videos).
+2. **Mount path:** `/data` · Tamaño: el que permita su plan (con 20–50 GB caben cientos de videos). **Mínimo recomendado: 5 GB.**
+   Un video de 8 minutos en 1080p necesita ~0,6–1,2 GB libres mientras se renderiza (el MP4 final pesa ~400–700 MB).
 
 ### 5. Recursos y dirección web
 1. *Settings → Resources*: suba el límite a **8 vCPU y 8 GB** (solo se cobra lo que se usa; así renderiza más rápido).
@@ -165,6 +166,23 @@ En la tableta y la computadora es igual (en la computadora, el icono de instalar
   (videos a la vez), `RENDER_MEMORY_MB` (si Railway no informa la memoria, p. ej. `2048`).
 * **Sus claves y ajustes no se pierden al actualizar** mientras el disco esté conectado. La app usa automáticamente el disco
   de Railway y, si no hay ninguno, muestra un aviso rojo en *Ajustes*.
+
+### «FFmpeg terminó con código 228» (disco lleno)
+
+El código **228** significa **ENOSPC: no queda espacio en el disco** (no es falta de memoria; la memoria agotada da
+«código null» o 244). Antes, las escenas intermedias del render ocupaban unas 8 veces más de lo necesario y se guardaban
+tres copias completas del video; con un volumen pequeño el disco se llenaba al ~96 %, justo en la exportación final.
+
+* **Ahora:** las escenas intermedias ocupan ~8 veces menos, se borran en cuanto su bloque está listo, la exportación final
+  lee los bloques directamente (sin crear otra copia) y la app **comprueba el espacio antes de cada fase y antes de pagar
+  generaciones de IA**. Si falta espacio, libera solo lo seguro (temporales interrumpidos, caché, escenas intermedias de
+  otros proyectos) y, si aun así no alcanza, se detiene con un mensaje claro **sin gastar nada**.
+* **Ver el espacio:** *Ajustes → Servidor* muestra el disco libre y su uso por categorías, con el botón
+  **«Liberar espacio temporal»** (nunca borra imágenes de Runway, narraciones ni videos terminados).
+* **Solución:** amplíe el volumen en Railway (*Settings → Volumes*) o borre proyectos antiguos y pulse
+  **«▶️ Reanudar producción»**: se reutilizan narración, imágenes IA y bloques ya renderizados, sin nuevos cargos.
+* Cada MP4 terminado se **verifica** (imagen H.264 con la resolución pedida, sonido AAC audible, duración correcta);
+  el resultado aparece en el registro como «MP4 verificado: …».
 
 ---
 

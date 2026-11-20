@@ -110,6 +110,9 @@ Sin `ADMIN_PASSWORD`, la app solo acepta conexiones del propio equipo (uso local
   Se eligió FFmpeg directo en lugar de Remotion porque no requiere navegador para renderizar, es mucho más rápido en equipos
   modestos y no tiene restricciones de licencia comercial.
 * Datos en `data/` (base de datos, proyectos, videos, claves en `data/secrets.json` con permisos 600). Esta carpeta **no se sube a Git**.
+* Render con disco limitado: escenas intermedias compactas que se borran al formar cada bloque, exportación final
+  desde los bloques (sin copia extra), comprobación de espacio antes de cada fase y verificación del MP4 final
+  (imagen, sonido y duración). El código de FFmpeg 228 = disco lleno; ver [DESPLIEGUE.md](DESPLIEGUE.md).
 * Cola de producción persistente con recuperación de trabajos interrumpidos y caché por paso (voz, recursos, escenas): volver a renderizar
   tras cambiar una imagen solo rehace lo necesario.
 * Despliegue: `Dockerfile` (Ubuntu 24.04 + FFmpeg 6.1 + Piper + eSpeak/MBROLA), `railway.json`, y `deploy/` (docker compose + Caddy con HTTPS para servidor propio).

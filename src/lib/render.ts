@@ -6,6 +6,14 @@ import { renderProfile, threadArgs } from "./resources";
 import { FONTS_DIR } from "./paths";
 
 export const FPS = 30;
+
+/**
+ * Codificación de los archivos INTERMEDIOS (escenas y bloques), que luego se recodifican en el
+ * render final. Antes: ultrafast + crf 15 (~7,4 MB por toma vertical de 4 s), lo que llenaba el
+ * disco (FFmpeg código 228 = ENOSPC). Ahora: veryfast + crf 17 (~0,9 MB), visualmente sin pérdida
+ * en un archivo intermedio. La calidad del MP4 final (crf 19, preset «faster») no cambia.
+ */
+const INTERMEDIATE = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "17"];
 export const XFADE = 0.6; // duración de las transiciones (s)
 
 const TRANSITIONS = ["fade", "dissolve", "fadeblack", "smoothleft", "fade", "circleopen", "fadewhite", "smoothup", "fade", "radial", "dissolve", "slideleft"];
@@ -81,7 +89,7 @@ export async function renderSegment(
   const frames = Math.max(2, Math.round(seg.duration * FPS));
   const fades = [fade?.in ? `fade=t=in:st=0:d=0.35` : "", fade?.out ? `fade=t=out:st=${Math.max(0, seg.duration - 0.35).toFixed(3)}:d=0.35` : ""].filter(Boolean).join(",");
   const tmp = `${out}.part.mp4`;
-  const enc = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "15", "-pix_fmt", "yuv420p", "-r", String(FPS), "-an", ...th.encode];
+  const enc = [...INTERMEDIATE, "-pix_fmt", "yuv420p", "-r", String(FPS), "-an", ...th.encode];
   if (seg.kind === "image") {
     const up = opt.safe ? 1.15 : 1.3;
     const W2 = Math.round((w * up) / 2) * 2;
@@ -97,7 +105,10 @@ export async function renderSegment(
       fades,
       "format=yuv420p",
     ].filter(Boolean).join(",");
-    await run("ffmpeg", ["-y", "-v", "error", ...th.filter, ...th.input, "-i", seg.file, "-vf", vf, "-frames:v", String(frames), ...enc, tmp]);
+    await run("ffmpeg", ["-y", "-v", "error", ...th.filter, ...th.input, "-i", seg.file, "-vf", vf, "-frames:v", String(frames), ...enc, tmp]).catch((e) => {
+      fs.rmSync(tmp, { force: true });
+      throw e;
+    });
   } else {
     const W2 = Math.round((w * 1.08) / 2) * 2;
     const H2 = Math.round((h * 1.08) / 2) * 2;
@@ -115,7 +126,10 @@ export async function renderSegment(
       fades,
       "format=yuv420p",
     ].filter(Boolean).join(",");
-    await run("ffmpeg", ["-y", "-v", "error", ...th.filter, ...th.input, "-stream_loop", "-1", "-i", seg.file, "-t", seg.duration.toFixed(3), "-vf", vf, ...enc, tmp]);
+    await run("ffmpeg", ["-y", "-v", "error", ...th.filter, ...th.input, "-stream_loop", "-1", "-i", seg.file, "-t", seg.duration.toFixed(3), "-vf", vf, ...enc, tmp]).catch((e) => {
+      fs.rmSync(tmp, { force: true });
+      throw e;
+    });
   }
   fs.renameSync(tmp, out);
   return out;
@@ -143,7 +157,10 @@ export async function xfadeJoin(files: string[], durations: number[], out: strin
     acc = offset + durations[i];
   }
   const tmp = `${out}.part.mp4`;
-  await run("ffmpeg", ["-y", "-v", "error", ...th.filter, ...inputs, "-filter_complex", parts.join(";"), "-map", "[v]", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "15", "-pix_fmt", "yuv420p", "-r", String(FPS), ...th.encode, tmp]);
+  await run("ffmpeg", ["-y", "-v", "error", ...th.filter, ...inputs, "-filter_complex", parts.join(";"), "-map", "[v]", ...INTERMEDIATE, "-pix_fmt", "yuv420p", "-r", String(FPS), ...th.encode, tmp]).catch((e) => {
+    fs.rmSync(tmp, { force: true });
+    throw e;
+  });
   fs.renameSync(tmp, out);
   return out;
 }
@@ -171,7 +188,8 @@ export async function particlesLayer(w: number, h: number, dir: string) {
 }
 
 export type FinalOpts = {
-  video: string;
+  /** Lista de bloques de video (se leen en orden, sin crear una copia unida en disco). */
+  videoParts: string[];
   narration: string;
   music: { file: string; volume: number } | null;
   ass: string;
@@ -186,7 +204,9 @@ export type FinalOpts = {
 /** Pasada final: partículas + subtítulos/gráficos + mezcla de audio con ducking + H.264/AAC. */
 export async function finalPass(o: FinalOpts) {
   const th = threadArgs(o.threads ?? renderProfile().threads);
-  const args = ["-y", ...th.filter, ...th.input, "-i", o.video, "-i", o.narration];
+  const list = `${o.out}.bloques.txt`;
+  fs.writeFileSync(list, o.videoParts.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join("\n"));
+  const args = ["-y", ...th.filter, ...th.input, "-f", "concat", "-safe", "0", "-i", list, "-i", o.narration];
   let idx = 2;
   let musicIdx = -1;
   let partIdx = -1;
@@ -228,7 +248,14 @@ export async function finalPass(o: FinalOpts) {
     "-movflags", "+faststart",
     `${o.out}.part.mp4`,
   );
-  await ffmpegProgress(args, o.total, o.onProgress);
+  try {
+    await ffmpegProgress(args, o.total, o.onProgress);
+  } catch (e) {
+    fs.rmSync(`${o.out}.part.mp4`, { force: true }); // no deja un MP4 a medias ocupando disco
+    throw e;
+  } finally {
+    fs.rmSync(list, { force: true });
+  }
   fs.renameSync(`${o.out}.part.mp4`, o.out);
   return o.out;
 }
@@ -254,4 +281,84 @@ export async function concatNarration(blocks: { file: string; duration: number }
 
 export function segKey(...parts: unknown[]) {
   return hash(...parts);
+}
+
+// ───────────────────────── Verificaciones ─────────────────────────
+
+type Probe = { streams?: { codec_type: string; codec_name?: string; width?: number; height?: number; pix_fmt?: string; duration?: string }[]; format?: { duration?: string } };
+
+async function probe(file: string): Promise<Probe> {
+  const out = await run("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type,codec_name,width,height,pix_fmt,duration:format=duration", "-of", "json", file]);
+  return JSON.parse(out) as Probe;
+}
+
+/** Duración de un video intermedio (o null si está dañado o incompleto). */
+export async function validDuration(file: string): Promise<number | null> {
+  try {
+    if (!exists(file)) return null;
+    const p = await probe(file);
+    const v = p.streams?.find((x) => x.codec_type === "video");
+    const d = parseFloat(p.format?.duration ?? v?.duration ?? "");
+    return v && isFinite(d) && d > 0 ? d : null;
+  } catch {
+    return null;
+  }
+}
+
+const SAFE_PIX = /^(yuvj?4[2-4][0-4]p|rgb24|bgr24|rgba|bgra|argb|abgr|gray|ya8|pal8)$/;
+
+/**
+ * Compatibilidad de imágenes: si una imagen no se puede leer de forma segura (formato raro,
+ * 16 bits, CMYK, tamaño enorme), se convierte UNA vez a JPEG de alta calidad al tamaño
+ * necesario. Las imágenes normales se usan tal cual (sin pérdida). Devuelve la ruta a usar.
+ */
+export async function compatibleStill(file: string, w: number, h: number): Promise<string> {
+  let p: Probe;
+  try {
+    p = await probe(file);
+  } catch (e) {
+    throw new Error(`La imagen ${path.basename(file)} no se puede leer (archivo dañado o formato no compatible): ${e instanceof Error ? e.message.slice(0, 200) : e}`);
+  }
+  const v = p.streams?.find((x) => x.codec_type === "video");
+  if (!v?.width || !v.height) throw new Error(`La imagen ${path.basename(file)} no contiene datos de imagen válidos.`);
+  const huge = v.width * v.height > 24_000_000;
+  if (SAFE_PIX.test(v.pix_fmt ?? "") && !huge) return file;
+  const out = `${file}.compatible.jpg`;
+  if (!exists(out)) {
+    const W2 = Math.round(w * 1.3);
+    const H2 = Math.round(h * 1.3);
+    await run("ffmpeg", ["-y", "-v", "error", "-i", file, "-vf", `scale=${W2}:${H2}:force_original_aspect_ratio=increase:flags=lanczos,format=rgb24`, "-frames:v", "1", "-q:v", "2", out]);
+  }
+  return out;
+}
+
+/**
+ * Verifica el MP4 final: imagen H.264 del tamaño correcto, sonido AAC con volumen real,
+ * duración esperada y último fotograma legible. Lanza un error con el motivo exacto.
+ */
+export async function verifyOutput(file: string, o: { w: number; h: number; total: number }) {
+  const p = await probe(file);
+  const v = p.streams?.find((x) => x.codec_type === "video");
+  const a = p.streams?.find((x) => x.codec_type === "audio");
+  const dur = parseFloat(p.format?.duration ?? "0");
+  const problems: string[] = [];
+  if (!v || v.codec_name !== "h264") problems.push("sin pista de video H.264");
+  else if (v.width !== o.w || v.height !== o.h) problems.push(`tamaño ${v.width}×${v.height} en lugar de ${o.w}×${o.h}`);
+  if (!a || a.codec_name !== "aac") problems.push("sin pista de sonido AAC");
+  if (!(Math.abs(dur - o.total) <= 0.75)) problems.push(`duración ${dur.toFixed(2)} s en lugar de ${o.total.toFixed(2)} s`);
+  let meanDb = -99;
+  if (a) {
+    // volumedetect escribe su resultado en stderr: se redirige a stdout para leerlo
+    const vd = await run("sh", ["-c", 'ffmpeg -v info -nostats -i "$1" -map 0:a:0 -af volumedetect -f null - 2>&1', "sh", file]).catch((e: Error) => e.message);
+    const m = /mean_volume:\s*(-?[\d.]+) dB/.exec(String(vd));
+    meanDb = m ? parseFloat(m[1]) : -99;
+    if (meanDb < -55) problems.push(`sonido prácticamente mudo (${meanDb} dB)`);
+  }
+  try {
+    await run("ffmpeg", ["-v", "error", "-ss", Math.max(0, dur - 1).toFixed(2), "-i", file, "-frames:v", "1", "-f", "null", "-"]);
+  } catch {
+    problems.push("el final del video no se puede decodificar");
+  }
+  if (problems.length) throw new Error(`El MP4 final no superó la verificación: ${problems.join("; ")}.`);
+  return { duration: dur, meanDb, width: v!.width!, height: v!.height! };
 }
