@@ -216,7 +216,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     } else if (o?.type === "info" && d > 2.5) {
       add(3, os, Math.min(oe, os + 3.5), "Info", `{\\fad(250,250)\\fscx70\\fscy70\\t(0,300,\\fscx100\\fscy100)\\pos(${Math.round(w / 2)},${Math.round(h * 0.38)})}${esc(o.text.toUpperCase())}`);
     }
-    if (sc.isAi) add(1, sc.start, sc.end, "Disclaimer", "Imagen ilustrativa generada con IA");
+    if (sc.isAi) add(1, sc.start, sc.end, "Disclaimer", "Recreación artística generada con IA");
 
     if (opts.subtitles) {
       const kw = new Set(sc.keywords.map(norm));

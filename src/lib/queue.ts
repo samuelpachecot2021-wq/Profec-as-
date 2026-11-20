@@ -5,6 +5,7 @@ import { renderProfile, resourceSummary } from "./resources";
 import { ProcessError } from "./util";
 import { db } from "./db";
 import { produce, type Reporter } from "./pipeline";
+import { AwaitingAiAuthorization } from "./ai/plan";
 import { getProject, updateProject, type JobRow } from "./projects";
 import { getSetting } from "./settings";
 import { notifyAll } from "./push";
@@ -146,6 +147,13 @@ async function runJob(job: JobRow) {
     const msg = e instanceof Error ? e.message : String(e);
     if (e instanceof Cancelled) {
       log("Cancelado");
+    } else if (e instanceof AwaitingAiAuthorization) {
+      // No es un error: la producción espera la autorización explícita del gasto en IA.
+      log(msg);
+      db().prepare("UPDATE jobs SET status = 'esperando_autorizacion', step = ?, updated_at = datetime('now') WHERE id = ?").run("Esperando su autorización para las escenas IA", job.id);
+      updateProject(job.project_id, { status: "autorizar", error: null });
+      const p = getProject(job.project_id);
+      await notifyAll({ title: "💳 Autorice las escenas IA", body: `${p?.title ?? "Proyecto"}: ${e.plan.clips} clips y ${e.plan.images - e.plan.clips} imágenes · máx. ${e.plan.maxUSD.toFixed(2)} USD`, url: `/proyecto/${job.project_id}`, tag: `p-${job.project_id}` });
     } else {
       console.error(`Trabajo ${job.id} falló:`, e);
       log(`ERROR: ${msg}`);

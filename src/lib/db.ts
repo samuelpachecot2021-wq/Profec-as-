@@ -94,6 +94,8 @@ function open() {
   // Migraciones para bases de datos creadas con versiones anteriores (no se pierde nada).
   const cols = (db.prepare("PRAGMA table_info(scenes)").all() as { name: string }[]).map((c) => c.name);
   if (!cols.includes("queries")) db.exec("ALTER TABLE scenes ADD COLUMN queries TEXT");
+  const pcols = (db.prepare("PRAGMA table_info(projects)").all() as { name: string }[]).map((c) => c.name);
+  if (!pcols.includes("ai_plan")) db.exec("ALTER TABLE projects ADD COLUMN ai_plan TEXT");
   return db;
 }
 

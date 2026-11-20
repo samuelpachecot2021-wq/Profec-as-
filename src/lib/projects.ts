@@ -27,6 +27,7 @@ export type ProjectRow = {
   authorized_cost: number;
   spent_cost: number;
   error: string | null;
+  ai_plan: string | null;
   created_at: string;
   updated_at: string;
 };

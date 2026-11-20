@@ -41,6 +41,8 @@ export async function estimateProject(projectId: string, scope: "script" | "vide
     }
     if (s.useAiImages && getSetting("OPENAI_API_KEY"))
       items.push({ label: `Imágenes IA (máximo, solo si faltan recursos: ${scenesCount} × $${AI_IMAGE_PRICE})`, cost: scenesCount * AI_IMAGE_PRICE });
+    if (s.visualMode && s.visualMode !== "bancos")
+      notes.push(`Escenas IA (${s.visualMode}): después de la narración verá el proveedor, el número de imágenes y clips, la duración y el costo exacto, y deberá autorizarlo antes de generar nada (presupuesto máximo ${(s.aiBudget ?? 5).toFixed(2)} USD).`);
     notes.push("Imágenes y videos de Pexels, Pixabay, Unsplash, Wikimedia y NASA: gratis.");
     notes.push("Música sintetizada y render con FFmpeg: gratis.");
   }

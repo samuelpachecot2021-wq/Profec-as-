@@ -3,6 +3,7 @@ import { checkAuthorization } from "@/lib/authorize";
 import { enqueue } from "@/lib/queue";
 import { estimateProject } from "@/lib/estimate";
 import { ok, fail, body } from "@/lib/api";
+import { runwayKey } from "@/lib/ai/runway";
 import type { ProjectSettings } from "@/lib/options";
 
 export const runtime = "nodejs";
@@ -14,6 +15,8 @@ export const runtime = "nodejs";
 export async function POST(req: Request) {
   try {
     const b = await body<{ articles: string[]; settings?: Partial<ProjectSettings>; authorize?: boolean; ids?: string[] }>(req);
+    if (b.settings?.visualMode && b.settings.visualMode !== "bancos" && !runwayKey())
+      throw new Error("La producción visual con IA necesita la clave de Runway (Ajustes). Elija «Solo bancos gratuitos» o añada la clave.");
     let ids = b.ids;
     if (!ids?.length) {
       const arts = (b.articles || []).map((a) => a.trim()).filter((a) => a.length > 40);

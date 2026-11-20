@@ -8,10 +8,11 @@ import { monthSpent, monthlyBudget } from "@/lib/costs";
 import { updateProject } from "@/lib/projects";
 import { hash } from "@/lib/util";
 import { ok, fail } from "@/lib/api";
+import { sceneAiEstimate, generateSceneAi } from "@/lib/ai/scene";
 import type { Overlay } from "@/lib/scenes";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 900;
 type Ctx = { params: Promise<{ id: string; sceneId: string }> };
 
 function scene(projectId: string, sceneId: string) {
@@ -85,6 +86,13 @@ export async function POST(req: Request, ctx: Ctx) {
     if (b.action === "use" && b.candidate) {
       if (b.candidate.provider === "biblioteca" ? !isLibraryPath(b.candidate.url) : !isAllowedMediaUrl(b.candidate.url)) throw new Error("Origen del recurso no permitido");
       const assetId = await downloadCandidate(id, b.candidate);
+      setAsset(s.id, assetId);
+      return ok({ assetId });
+    }
+    if (b.action === "ai-runway-image" || b.action === "ai-runway-video") {
+      const kind = b.action === "ai-runway-video" ? "video" : "image";
+      if (!b.authorize) return ok({ needsAuthorization: true, estimate: sceneAiEstimate(id, s, kind) });
+      const assetId = await generateSceneAi(id, s, kind, b.prompt);
       setAsset(s.id, assetId);
       return ok({ assetId });
     }

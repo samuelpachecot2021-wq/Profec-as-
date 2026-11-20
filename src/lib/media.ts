@@ -8,7 +8,7 @@ import { scoreCandidate, MIN_SCORE } from "./visual";
 import { assertCanSpend, recordCost } from "./costs";
 
 export type Candidate = {
-  provider: "pexels" | "pixabay" | "unsplash" | "wikimedia" | "nasa" | "biblioteca" | "ia" | "local" | "propio";
+  provider: "pexels" | "pixabay" | "unsplash" | "wikimedia" | "nasa" | "biblioteca" | "ia" | "runway-ia" | "local" | "propio";
   kind: "video" | "image";
   externalId: string;
   url: string; // archivo a descargar

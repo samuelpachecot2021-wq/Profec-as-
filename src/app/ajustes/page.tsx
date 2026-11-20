@@ -18,6 +18,7 @@ const KEYS: { key: string; label: string; help: string; url: string; free: boole
   { key: "ANTHROPIC_API_KEY", label: "Claude (guiones, traducción, SEO)", help: "De pago por uso (céntimos por video). La app siempre pide autorización antes de gastar.", url: "https://console.anthropic.com/", free: false },
   { key: "ELEVENLABS_API_KEY", label: "ElevenLabs (voz más humana)", help: "De pago según plan.", url: "https://elevenlabs.io/", free: false },
   { key: "AZURE_SPEECH_KEY", label: "Azure Speech (voz estable)", help: "Tiene un nivel gratuito mensual. Indique también la región.", url: "https://portal.azure.com/", free: false },
+  { key: "RUNWAY_API_KEY", label: "Runway (imágenes y videos con IA)", help: "Necesaria para los modos Económico, Premium e Inteligente. En dev.runway.com cree una cuenta → API Keys → «Create new key» (la clave empieza por key_). Recargue créditos en Billing (mínimo 10 USD; 1 crédito = 0,01 USD).", url: "https://dev.runway.com", free: false },
   { key: "OPENAI_API_KEY", label: "OpenAI (imágenes con IA)", help: "De pago por imagen. Solo se usa si activa «Imágenes con IA».", url: "https://platform.openai.com/", free: false },
 ];
 
@@ -113,6 +114,7 @@ export default function Settings() {
                       <Select value={v("ELEVENLABS_PLAN") || "uso"} onChange={(x) => setV("ELEVENLABS_PLAN", x)} options={[{ value: "uso", label: "Contar el costo de cada video (pago por uso)" }, { value: "suscripcion", label: "Tengo suscripción mensual (no contar costo por video)" }]} />
                     </div>
                   )}
+                  {k.key === "RUNWAY_API_KEY" && st?.configured && <RunwayBalance />}
                   {k.key === "ANTHROPIC_API_KEY" && (
                     <div className="mt-2">
                       <Select
@@ -405,5 +407,30 @@ function ServerInfo() {
       )}
       <p className="text-xs text-zinc-500">🖥️ {st.server.summary}{st.server.persistent ? " · datos guardados en disco persistente ✓" : ""}</p>
     </>
+  );
+}
+
+function RunwayBalance() {
+  const [r, setR] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <Button
+        variant="ghost"
+        loading={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            const d = await api<{ balance: { credits: number; usd: number } | null; error?: string }>("/api/ai/runway");
+            setR(d.balance ? `Clave válida ✓ · saldo: ${d.balance.credits.toLocaleString("es")} créditos (${d.balance.usd.toFixed(2)} USD)` : `⚠️ ${d.error ?? "No se pudo consultar el saldo"}`);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        Comprobar clave y saldo
+      </Button>
+      {r && <span className="text-xs text-gold">{r}</span>}
+    </div>
   );
 }

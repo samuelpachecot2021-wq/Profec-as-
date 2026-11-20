@@ -16,8 +16,8 @@ type Row = {
   job_step: string | null;
 };
 
-const LABEL: Record<string, string> = { borrador: "Borrador", guion: "Guion listo", en_cola: "En cola", procesando: "Produciendo", listo: "Video listo", error: "Error", cancelado: "Cancelado" };
-const COLOR: Record<string, string> = { listo: "bg-emerald-700", error: "bg-blood", procesando: "bg-gold text-black", en_cola: "bg-amber-800" };
+const LABEL: Record<string, string> = { autorizar: "Autorizar escenas IA", esperando_autorizacion: "Autorizar escenas IA", borrador: "Borrador", guion: "Guion listo", en_cola: "En cola", procesando: "Produciendo", listo: "Video listo", error: "Error", cancelado: "Cancelado" };
+const COLOR: Record<string, string> = { autorizar: "bg-gold text-black", esperando_autorizacion: "bg-gold text-black", listo: "bg-emerald-700", error: "bg-blood", procesando: "bg-gold text-black", en_cola: "bg-amber-800" };
 
 export default function Projects() {
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -77,6 +77,7 @@ export default function Projects() {
                   )}
                   {st === "error" && <p className="mt-1 line-clamp-2 text-xs text-red-300">{p.error}</p>}
                   {(st === "error" || st === "cancelado") && <p className="mt-1 text-xs font-semibold text-gold">▶️ Abrir para reanudar la producción</p>}
+                  {(st === "autorizar" || p.job_status === "esperando_autorizacion") && <p className="mt-1 text-xs font-semibold text-gold">💳 Abrir para revisar y autorizar el costo de las escenas IA</p>}
                   <p className="mt-1 text-xs text-zinc-500">
                     {new Date(p.updated_at.replace(" ", "T") + "Z").toLocaleString("es")}
                     {p.spent_cost > 0 && ` · $${p.spent_cost.toFixed(2)}`}

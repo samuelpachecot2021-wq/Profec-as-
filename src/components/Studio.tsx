@@ -7,6 +7,7 @@ import { Alert, Button, Card, CostDialog, Field, Select, Toggle, api, inputCls, 
 import { ScenesPanel } from "./ScenesPanel";
 import { SeoPanel } from "./SeoPanel";
 import { usePush } from "./pwa";
+import { VisualModeField, AiPlanPanel } from "./AiVisual";
 
 type Status = { ffmpeg: boolean; llm: string; llmLabel: string; media: Record<string, boolean>; voices: Record<string, boolean>; aiImages: boolean };
 type AuthResp = { needsAuthorization?: boolean; estimate?: Estimate };
@@ -289,6 +290,9 @@ export function Studio({ projectId: initialId }: { projectId?: string }) {
                 </div>
               </Field>
             </div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <VisualModeField settings={settings} set={set} />
+            </div>
             <details className="mt-4 rounded-xl border border-line bg-ink/50 p-3">
               <summary className="cursor-pointer text-sm font-semibold text-zinc-300">Opciones avanzadas</summary>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -359,6 +363,7 @@ export function Studio({ projectId: initialId }: { projectId?: string }) {
                 </div>
                 <p className="text-sm text-zinc-400">{job.step}</p>
                 {job.status === "error" && <Alert kind="error">{job.error}</Alert>}
+                {job.status === "esperando_autorizacion" && projectId && <AiPlanPanel projectId={projectId} onDone={() => load(projectId)} />}
                 {(job.status === "error" || job.status === "cancelado") && (
                   <Button variant="gold" big className="w-full" onClick={genVideo} loading={busy === "video"}>
                     ▶️ Reanudar producción
@@ -471,7 +476,7 @@ export function Studio({ projectId: initialId }: { projectId?: string }) {
 }
 
 function labelStatus(s: string) {
-  return { en_cola: "En cola…", procesando: "Produciendo…", completado: "¡Video terminado!", error: "Hubo un problema", cancelado: "Cancelado" }[s] ?? s;
+  return { en_cola: "En cola…", procesando: "Produciendo…", completado: "¡Video terminado!", error: "Hubo un problema", cancelado: "Cancelado", esperando_autorizacion: "Esperando su autorización" }[s] ?? s;
 }
 
 function Badge({ ok, warn, children }: { ok: boolean; warn?: boolean; children: React.ReactNode }) {

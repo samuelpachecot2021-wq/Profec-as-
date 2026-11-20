@@ -55,7 +55,7 @@ test("ASS resalta palabras clave en amarillo", () => {
   const ass = buildAss({ scenes: [{ text: "Jesucristo viene pronto", start: 0, end: 3, overlay: { type: "verse", ref: "Juan 14:3" }, keywords: [], isAi: true }], w: 1920, h: 1080, subtitles: true, position: "abajo", title: "x" });
   assert.match(ass, /\\c&H0000E5FF&\}Jesucristo/);
   assert.match(ass, /JUAN 14:3/);
-  assert.match(ass, /Imagen ilustrativa generada con IA/);
+  assert.match(ass, /Recreación artística generada con IA/);
 });
 
 test("dimensiones de los formatos", () => {

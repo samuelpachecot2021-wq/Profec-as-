@@ -86,6 +86,12 @@ export type ProjectSettings = {
   translateToSpanish: boolean;
   useAiImages: boolean;
   preferVideo: boolean;
+  /** Producción visual: bancos gratuitos o generación con IA (económico, premium, inteligente). */
+  visualMode: "bancos" | "economico" | "premium" | "inteligente";
+  /** Presupuesto máximo por video para escenas IA (USD). */
+  aiBudget: number;
+  aiImageModel: string;
+  aiVideoModel: string;
   sources: { pexels: boolean; pixabay: boolean; unsplash: boolean; wikimedia: boolean; nasa: boolean; biblioteca: boolean };
 };
 
@@ -103,6 +109,10 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   translateToSpanish: true,
   useAiImages: false,
   preferVideo: true,
+  visualMode: "bancos",
+  aiBudget: 5,
+  aiImageModel: "muse_image",
+  aiVideoModel: "gen4_turbo",
   sources: { pexels: true, pixabay: true, unsplash: true, wikimedia: true, nasa: true, biblioteca: true },
 };
 
@@ -129,3 +139,10 @@ export const TOPICS = [
   "El tercer templo", "Acontecimientos mundiales", "El dinero digital", "La inteligencia artificial",
   "Persecución de los cristianos", "Guerras y conflictos", "Los últimos tiempos", "Evangelización y salvación",
 ];
+
+export const VISUAL_MODES = [
+  { value: "inteligente", label: "Inteligente — combinación optimizada (recomendado)", desc: "Video IA en los momentos clave, imágenes IA animadas y recursos gratuitos en el resto, ajustado al presupuesto." },
+  { value: "economico", label: "Económico — imágenes IA animadas", desc: "Imágenes originales con IA convertidas en escenas con zoom, desplazamientos y transiciones." },
+  { value: "premium", label: "Premium — video generado con IA", desc: "Clips de video IA con movimiento real (personas, nubes, agua, cámara) en todas las escenas que permita el presupuesto." },
+  { value: "bancos", label: "Solo bancos gratuitos (sin IA de pago)", desc: "Pexels, Pixabay, Unsplash, Wikimedia, NASA y su biblioteca." },
+] as const;

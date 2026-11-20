@@ -165,3 +165,53 @@ En la tableta y la computadora es igual (en la computadora, el icono de instalar
   (videos a la vez), `RENDER_MEMORY_MB` (si Railway no informa la memoria, p. ej. `2048`).
 * **Sus claves y ajustes no se pierden al actualizar** mientras el disco esté conectado. La app usa automáticamente el disco
   de Railway y, si no hay ninguno, muestra un aviso rojo en *Ajustes*.
+
+---
+
+## 🎨 Producción visual con IA (Runway)
+
+**Proveedor integrado:** Runway (API oficial, `api.dev.runwayml.com`). Una sola clave sirve para imágenes y videos.
+Precios oficiales consultados el 20-11-2026 en <https://docs.dev.runwayml.com/guides/pricing> (1 crédito = 0,01 USD):
+
+| Uso | Modelo | Precio oficial |
+|---|---|---|
+| Imagen (Económico y fotogramas) | Muse Image | 1 crédito por imagen (0,01 USD) |
+| Imagen de máxima calidad | Gen-4 Image | 8 créditos por imagen 1080p (0,08 USD) |
+| Video (predeterminado) | Gen-4 Turbo | 5 créditos por segundo (0,25 USD por clip de 5 s) |
+| Video 1080p | Veo 3.1 Fast | 10 créditos por segundo |
+| Video de máxima calidad | Gen-4.5 | 12 créditos por segundo |
+| Video más barato | Grok Imagine 1.5 Lite | 3 créditos por segundo + 1 |
+
+**Costo orientativo por video** (escenas de 3–5 s, valores predeterminados):
+
+| Modo | Video de 1 minuto | Video de 8 minutos |
+|---|---|---|
+| Solo bancos gratuitos | 0 USD | 0 USD |
+| Económico (imágenes Muse animadas) | ≈ 0,15 USD | ≈ 1,30 USD |
+| Inteligente (≈30 % video Gen-4 Turbo + resto gratis) | ≈ 1 USD | ≈ 10–12 USD (o lo que fije como presupuesto) |
+| Premium (todo video Gen-4 Turbo) | ≈ 4 USD | ≈ 30–35 USD |
+
+El **presupuesto máximo por video** (5 USD por defecto) nunca se supera: si no alcanza, la app usa menos clips de video
+y más imágenes o recursos gratuitos, y se lo avisa. Además existe el presupuesto mensual de Ajustes.
+
+**Cómo funciona la autorización:** al pulsar «Generar video completo», la app escribe el guion y genera la narración de
+Brian; luego **se detiene** y le muestra proveedor, modelos, número de imágenes y clips, duración de cada clip, costo
+estimado, máximo y presupuesto. Nada de pago se genera hasta que pulse **«Autorizar y continuar»** (también le llega una
+notificación al teléfono). Puede elegir **«Continuar sin IA»** y el video se hace solo con recursos gratuitos.
+
+**Conseguir la clave:** <https://dev.runway.com> → crear cuenta → *API Keys* → *Create new key* (empieza por `key_`) →
+*Billing*: recargar créditos (pago mínimo 10 USD). Pegue la clave en **Ajustes → Runway** y pulse **«Comprobar clave y saldo»**.
+
+---
+
+## ✅ Verificar la actualización en Railway
+
+1. Railway → su servicio → **Deployments**: el último despliegue debe estar **Active** (verde) con el commit más reciente de `main`.
+   Si falló, pulse el despliegue → **View logs** y busque líneas con `Error`.
+2. Abra su enlace e inicie sesión. En **Ajustes**, compruebe que siguen sus claves (ElevenLabs, Pexels…) y que no aparece el
+   aviso rojo de disco persistente.
+3. En **Ajustes → Runway** pegue la clave, guarde y pulse **«Comprobar clave y saldo»**: debe mostrar su saldo de créditos.
+4. En el **Estudio**, elija *Tipo de producción visual → Económico*, presupuesto 1 USD, duración 15 o 30 segundos, y pulse
+   «Generar video completo». Debe aparecer el panel **«Autorice el costo de las escenas IA»**; autorice (costará unos céntimos).
+5. Al terminar, revise el video y, en *Registro detallado*, las líneas «Escena IA … créditos = … USD» (costo real).
+   En Runway → *Usage* verá las mismas generaciones.

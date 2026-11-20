@@ -93,6 +93,18 @@ function SceneModal({ scene, projectId, onClose, reload, onError }: { scene: Sce
     }).catch(() => undefined);
   }
 
+  const [rwAction, setRwAction] = useState<string | null>(null);
+  async function runway(action: "ai-runway-image" | "ai-runway-video", authorize: boolean) {
+    await doIt(action, async () => {
+      const r = await api<{ needsAuthorization?: boolean; estimate?: Estimate }>(url, { method: "POST", json: { action, prompt: query, authorize } });
+      if (r.needsAuthorization) {
+        setRwAction(action);
+        setEstimate(r.estimate!);
+        throw new Error("__auth__");
+      }
+    }).catch(() => undefined);
+  }
+
   return (
     <Modal open onClose={onClose} title={`Escena ${scene.idx + 1}`} wide>
       <div className="space-y-4">
@@ -132,8 +144,14 @@ function SceneModal({ scene, projectId, onClose, reload, onError }: { scene: Sce
               }}
             />
           </label>
+          <Button variant="ghost" onClick={() => runway("ai-runway-image", false)} loading={busy === "ai-runway-image"}>
+            ✨ Imagen IA (Runway)
+          </Button>
+          <Button variant="ghost" onClick={() => runway("ai-runway-video", false)} loading={busy === "ai-runway-video"}>
+            🎬 Clip de video IA (Runway)
+          </Button>
           <Button variant="ghost" onClick={() => ai(false)} loading={busy === "ia"}>
-            ✨ Generar con IA
+            ✨ Imagen IA (OpenAI)
           </Button>
           {scene.locked && (
             <Button variant="ghost" onClick={() => doIt("auto", () => api(url, { method: "PATCH", json: { unlock: true } }))}>
@@ -168,6 +186,7 @@ function SceneModal({ scene, projectId, onClose, reload, onError }: { scene: Sce
           </div>
         )}
         {busy === "usar" && <p className="text-sm text-gold">Descargando recurso…</p>}
+        {(busy === "ai-runway-image" || busy === "ai-runway-video") && <p className="text-sm text-gold">Generando con Runway… (un clip de video puede tardar 1–3 minutos)</p>}
         <p className="text-xs text-zinc-500">Después de cambiar imágenes pulse «Volver a renderizar con los cambios». La voz y las demás imágenes se reutilizan.</p>
       </div>
       <CostDialog
@@ -175,7 +194,11 @@ function SceneModal({ scene, projectId, onClose, reload, onError }: { scene: Sce
         onCancel={() => setEstimate(null)}
         onConfirm={() => {
           setEstimate(null);
-          void ai(true);
+          if (rwAction) {
+            const a = rwAction as "ai-runway-image" | "ai-runway-video";
+            setRwAction(null);
+            void runway(a, true);
+          } else void ai(true);
         }}
       />
     </Modal>

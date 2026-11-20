@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { DEFAULT_SETTINGS, DURATIONS, FORMATS, MUSIC_STYLES, RESOLUTIONS, VOICES, type ProjectSettings } from "@/lib/options";
 import { Alert, Button, Card, CostDialog, Field, Select, Toggle, api, inputCls, type Estimate } from "@/components/ui";
+import { VisualModeField } from "@/components/AiVisual";
 
 type Job = { id: number; project_id: string; title: string; status: string; progress: number; step: string | null; error: string | null };
 
@@ -73,6 +74,7 @@ export default function Batch() {
             <div className="pt-6">
               <Toggle checked={settings.subtitles} onChange={(v) => set("subtitles", v)} label="Subtítulos" />
             </div>
+            <VisualModeField settings={settings} set={set} />
           </div>
           {msg && (
             <div className="mt-3">

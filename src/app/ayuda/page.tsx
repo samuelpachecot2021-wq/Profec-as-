@@ -40,7 +40,7 @@ export default function Help() {
           <li>No inventa noticias, declaraciones ni citas; distingue hechos de interpretación profética (aparece la etiqueta «Interpretación profética»).</li>
           <li>Citas bíblicas de la Reina-Valera 1960. Revise siempre las citas antes de publicar.</li>
           <li>Usa «arrebatamiento» en lugar de «rapto».</li>
-          <li>Las imágenes generadas con IA se marcan como «Imagen ilustrativa generada con IA».</li>
+          <li>Las imágenes y videos generados con IA se marcan como «Recreación artística generada con IA»; nunca se presentan como hechos reales.</li>
           <li>Registra fuente, autor y licencia de cada imagen o clip y los añade a la descripción.</li>
         </ul>
       </Card>
@@ -52,6 +52,24 @@ export default function Help() {
             </span>
           ))}
         </div>
+      </Card>
+      <Card title="🎨 Producción visual con IA (Runway)">
+        <ul className="list-inside list-disc space-y-1 text-sm text-zinc-300">
+          <li>
+            <b>Económico:</b> imágenes originales con IA animadas con zoom y desplazamientos (desde 0,01 USD por escena).
+          </li>
+          <li>
+            <b>Premium:</b> clips de video generados con IA con movimiento real (Gen-4 Turbo: 0,05 USD por segundo).
+          </li>
+          <li>
+            <b>Inteligente (recomendado):</b> video IA en los momentos clave, imágenes IA y recursos gratuitos en el resto, dentro de su presupuesto.
+          </li>
+          <li>Después de la narración, la app le muestra proveedor, número de imágenes y clips, duración de cada clip y costo exacto. No se genera nada de pago sin que pulse «Autorizar».</li>
+          <li>
+            Clave: en <b>dev.runway.com</b> → API Keys → crear clave (empieza por <code>key_</code>) → Billing: recargar créditos (mínimo 10 USD). Péguela en Ajustes → Runway.
+          </li>
+          <li>Si Runway falla en una escena, se usa un recurso gratuito; nunca se cambia a otro proveedor de pago. Al reanudar no se repiten escenas ya generadas.</li>
+        </ul>
       </Card>
       <Card title="📲 Instalar la app en Android">
         <ol className="list-inside list-decimal space-y-2 text-sm leading-relaxed text-zinc-300">

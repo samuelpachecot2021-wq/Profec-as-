@@ -16,6 +16,7 @@ export const SECRET_KEYS = [
   "PIXABAY_API_KEY",
   "UNSPLASH_ACCESS_KEY",
   "OPENAI_API_KEY",
+  "RUNWAY_API_KEY",
 ] as const;
 
 export const PLAIN_KEYS = [

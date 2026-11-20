@@ -16,6 +16,7 @@ import { activeProvider } from "./llm";
 import { projectDir } from "./paths";
 import { ffprobeDuration, hash, exists, ProcessError } from "./util";
 import { renderProfile, resourceSummary, containerMemoryUsedMB } from "./resources";
+import { buildPlan, executePlan, fallbackImageFor, getPlan, savePlan, AwaitingAiAuthorization, type AiPlan } from "./ai/plan";
 
 /** Informa el progreso; `log` (opcional) añade una línea al registro detallado del trabajo. */
 export type Reporter = ((progress: number, step: string) => void) & { log?: (msg: string) => void };
@@ -241,6 +242,52 @@ async function ensureMedia(projectId: string, scenes: SceneRow[], total: number,
       aiPrompt: `${queries[0] ?? lead.query}. Narration context: ${text}`,
     });
   };
+  // ── Escenas generadas con IA (modos económico, premium e inteligente) ──
+  let plan: AiPlan | null = null;
+  const log = logOf(report);
+  if (s.visualMode && s.visualMode !== "bancos") {
+    const shots = groups.map((g, gi) => {
+      const lead = scenes[g[0]];
+      return {
+        gi,
+        sceneId: lead.id,
+        text: g.map((i) => scenes[i].text).join(" "),
+        meaning: extraOf(lead).meaning ?? null,
+        query: lead.query,
+        seconds: g.reduce((acc, i) => acc + D[i], 0),
+        verse: g.some((i) => (scenes[i].overlay ?? "").includes('"verse"')),
+        locked: !!lead.locked,
+      };
+    });
+    const previous = getPlan(projectId);
+    const fresh = buildPlan({ mode: s.visualMode, format: s.format, budgetUSD: s.aiBudget ?? 5, imageModelId: s.aiImageModel, videoModelId: s.aiVideoModel, shots, previous });
+    if (previous && previous.approved && previous.hash === fresh.hash) plan = previous;
+    else if (fresh.maxUSD <= 0.0001) plan = { ...fresh, approved: true, approvedAt: new Date().toISOString() };
+    else {
+      savePlan(projectId, fresh);
+      throw new AwaitingAiAuthorization(fresh);
+    }
+    savePlan(projectId, plan);
+    log(`Escenas IA (${plan.mode}): ${plan.clips} clips de video, ${plan.images - plan.clips} imágenes, ${plan.stock} con recursos gratuitos · autorizado hasta ${plan.maxUSD.toFixed(2)} USD`);
+    await executePlan(projectId, plan, report, log);
+    // asigna a cada toma su escena IA ya generada
+    for (const it of plan.items) {
+      if (it.status !== "hecho" || !it.assetId) continue;
+      const lead = scenes[groups[it.gi][0]];
+      if (it.part === 2) {
+        // segunda mitad de una toma larga: segundo recurso de la toma
+        const ex = extraOf(lead);
+        if (ex.asset2 !== it.assetId) {
+          updExtra.run(JSON.stringify({ ...ex, asset2: it.assetId }), lead.id);
+          lead.queries = JSON.stringify({ ...ex, asset2: it.assetId });
+        }
+        continue;
+      }
+      if (lead.asset_id !== it.assetId) upd.run(it.assetId, lead.id);
+      lead.asset_id = it.assetId;
+    }
+  }
+
   for (let gi = 0; gi < groups.length; gi++) {
     const g = groups[gi];
     const lead = scenes[g[0]];
@@ -248,7 +295,13 @@ async function ensureMedia(projectId: string, scenes: SceneRow[], total: number,
     let a = getAsset(lead.asset_id);
     // un recurso ya usado por otra toma de este video no se repite (salvo que se fijara a mano)
     if (!a || !fs.existsSync(a.local_path) || (!lead.locked && usedIds.has(a.id))) {
-      const id = await search(g, gi);
+      let id = await search(g, gi);
+      // modo inteligente: si no hubo recurso gratuito adecuado, imagen IA de respaldo (ya autorizada)
+      const item = plan?.items.find((x) => x.gi === gi && x.part !== 2);
+      if (plan && item && item.kind === "stock" && item.fallbackImage && getAsset(id)?.provider === "local") {
+        const ai = await fallbackImageFor(projectId, plan, item, log);
+        if (ai) id = ai;
+      }
       upd.run(id, lead.id);
       lead.asset_id = id;
       a = getAsset(id)!;
@@ -260,7 +313,10 @@ async function ensureMedia(projectId: string, scenes: SceneRow[], total: number,
     }
     // Toma larga (> 5,5 s): un segundo clip distinto para que la imagen cambie a mitad.
     const dur = g.reduce((acc, i) => acc + D[i], 0);
-    if (dur > SHOT_MAX) {
+    // las escenas IA de tomas largas ya traen su segunda escena del plan; si no la hay, se busca gratis
+    const planned2 = plan?.items.find((x) => x.gi === gi && x.part === 2 && x.status === "hecho" && x.assetId);
+    if (dur > SHOT_MAX && planned2) usedIds.add(planned2.assetId!);
+    else if (dur > SHOT_MAX) {
       const ex = extraOf(lead);
       const a2 = getAsset(ex.asset2 ?? null);
       if (!a2 || !fs.existsSync(a2.local_path) || usedIds.has(a2.id)) {
