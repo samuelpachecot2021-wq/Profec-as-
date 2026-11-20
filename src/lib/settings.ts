@@ -32,6 +32,7 @@ export const PLAIN_KEYS = [
   "ELEVENLABS_VOICE_ID",
   "AZURE_FREE_TIER",
   "ELEVENLABS_PLAN",
+  "THUMBNAIL_STYLE",
 ] as const;
 
 export type SecretKey = (typeof SECRET_KEYS)[number];
@@ -51,6 +52,7 @@ const DEFAULTS: Partial<Record<AnyKey, string>> = {
   LLM_PROVIDER: "auto",
   ELEVENLABS_VOICE_ID: BRIAN_VOICE_ID,
   ELEVENLABS_PLAN: "uso",
+  THUMBNAIL_STYLE: "inteligente",
 };
 
 function readFile(): Record<string, string> {

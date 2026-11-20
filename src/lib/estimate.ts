@@ -25,6 +25,7 @@ export async function estimateProject(projectId: string, scope: "script" | "vide
     if (scope === "video") {
       items.push({ label: "Planificación de escenas con Claude", cost: estimateClaudeCost(scriptChars + 1500, scenesCount * 160) });
       items.push({ label: "Títulos, descripción y capítulos (SEO)", cost: estimateClaudeCost(scriptChars + 2000, 4000) });
+      items.push({ label: "Análisis del guion para las miniaturas", cost: estimateClaudeCost(Math.min(scriptChars, 24000) + 2500, 1500) });
       if (s.translateSubsEn) items.push({ label: "Subtítulos en inglés", cost: estimateClaudeCost(scriptChars * 1.3, scriptChars * 1.1) });
     }
   } else if (provider === "ollama") notes.push("Guion y textos con Ollama (gratis, en su servidor).");
@@ -44,6 +45,7 @@ export async function estimateProject(projectId: string, scope: "script" | "vide
     if (s.visualMode && s.visualMode !== "bancos")
       notes.push(`Escenas IA (${s.visualMode}): después de la narración verá el proveedor, el número de imágenes y clips, la duración y el costo exacto, y deberá autorizarlo antes de generar nada (presupuesto máximo ${(s.aiBudget ?? 5).toFixed(2)} USD).`);
     notes.push("Imágenes y videos de Pexels, Pixabay, Unsplash, Wikimedia y NASA: gratis.");
+    notes.push("Miniaturas: fotos de Wikimedia Commons (identidad verificada en Wikidata) y recursos del propio video, sin costo; no se generan imágenes nuevas de pago.");
     notes.push("Música sintetizada y render con FFmpeg: gratis.");
   }
   const total = items.reduce((a, i) => a + i.cost, 0);

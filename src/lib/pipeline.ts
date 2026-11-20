@@ -11,7 +11,7 @@ import { musicFor } from "./music";
 import { buildAss, srtCues, toSrt, type TimedScene } from "./subtitles";
 import { renderSegment, xfadeJoin, particlesLayer, finalPass, concatNarration, XFADE, segKey, validDuration, compatibleStill, verifyOutput } from "./render";
 import { ensureSpace, estimateRenderMB, estimateFinalMB, freeSpace, diskInfo, DiskFullError } from "./disk";
-import { makeThumbnails } from "./thumbnails";
+import { generateThumbnails, thumbCredits } from "./thumbnails";
 import { generateSeo, fullDescription } from "./seo";
 import { activeProvider } from "./llm";
 import { projectDir } from "./paths";
@@ -536,21 +536,22 @@ export async function produce(projectId: string, report: Reporter) {
   const assets = scenes.map((sc) => getAsset(sc.asset_id)!).filter(Boolean);
   const credits = [...new Set(assets.filter((a) => !["local", "propio"].includes(a.provider)).map((a) => `• ${a.attribution}${a.page_url ? ` — ${a.page_url}` : ""} (${a.license})`))];
   if (music) credits.push(`• Música: ${music.label}`);
+  // Miniaturas: análisis del guion, fotos con derechos verificables y 3 propuestas al tamaño del video.
+  // Un fallo aquí nunca impide entregar el video ya renderizado.
+  report(0.985, "Diseñando miniaturas");
+  let thumbs: string[] = [];
+  try {
+    updateProject(projectId, { seo: JSON.stringify(seo) });
+    const st = await generateThumbnails({ projectId, log, seo });
+    thumbs = [st.proposals[st.selected]?.file, ...st.proposals.filter((_, i) => i !== st.selected).map((x) => x.file)].filter(Boolean);
+    credits.push(...thumbCredits(st));
+    for (const w of st.warnings) log(`Miniaturas: ${w}`);
+  } catch (e) {
+    log(`Miniaturas: no se pudieron crear (${e instanceof Error ? e.message : e}). Puede generarlas después desde el proyecto.`);
+  }
   const desc = fullDescription(seo, credits);
   fs.writeFileSync(path.join(outDir, "creditos-y-licencias.txt"), credits.join("\n") + "\n");
   fs.writeFileSync(path.join(outDir, "descripcion-youtube.txt"), desc);
-
-  report(0.985, "Diseñando miniaturas");
-  const imgs = assets
-    .map((a) => ({ a, score: (a.kind === "image" ? 2 : 1) + (a.provider === "local" ? -5 : 0) + (a.is_ai ? 1 : 0) }))
-    .sort((x, y) => y.score - x.score);
-  const picks = [imgs[0], imgs[Math.floor(imgs.length / 2)], imgs[imgs.length - 1]].filter(Boolean).map((x) => x.a);
-  const thumbs = await makeThumbnails({
-    images: picks.map((a) => a.local_path),
-    isAi: picks.map((a) => !!a.is_ai),
-    titles: seo.thumbnailTitles,
-    dir: path.join(outDir, "miniaturas"),
-  });
 
   updateProject(projectId, {
     output_path: out,

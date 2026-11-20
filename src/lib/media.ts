@@ -170,6 +170,12 @@ async function unsplash(query: string, orientation: string): Promise<Candidate[]
 const FREE_LICENSES = /^(cc0|public domain|pd|pdm|cc by \d|cc-by-\d|cc by \d\.\d|attribution)/i;
 const SA_LICENSES = /^cc[ -]by[ -]sa/i;
 
+/** Licencias que permiten uso comercial y obras derivadas (CC BY-SA solo si se autoriza en Ajustes). */
+export function licenseAllowed(lic: string, allowSA = getSetting("ALLOW_CC_BY_SA") === "si") {
+  const ok = FREE_LICENSES.test(lic) || (allowSA && SA_LICENSES.test(lic));
+  return ok && !/nc|nd/i.test(lic.replace(/^cc[ -]by[ -]sa/i, ""));
+}
+
 async function wikimedia(query: string): Promise<Candidate[]> {
   const allowSA = getSetting("ALLOW_CC_BY_SA") === "si";
   const url = `https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6&gsrlimit=15&gsrsearch=${encodeURIComponent(`${query} filetype:bitmap`)}&prop=imageinfo&iiprop=url|extmetadata|size|mime&iiurlwidth=2400&origin=*`;
@@ -179,8 +185,7 @@ async function wikimedia(query: string): Promise<Candidate[]> {
     const ii = p.imageinfo?.[0];
     if (!ii || !/jpeg|png/.test(ii.mime) || ii.width < 1000) continue;
     const lic = (ii.extmetadata?.LicenseShortName?.value ?? "").replace(/<[^>]+>/g, "").trim();
-    const ok = FREE_LICENSES.test(lic) || (allowSA && SA_LICENSES.test(lic));
-    if (!ok || /nc|nd/i.test(lic.replace(/^cc[ -]by[ -]sa/i, ""))) continue;
+    if (!licenseAllowed(lic, allowSA)) continue;
     const artist = (ii.extmetadata?.Artist?.value ?? "Wikimedia Commons").replace(/<[^>]+>/g, "").trim().slice(0, 120);
     const desc = (ii.extmetadata?.ImageDescription?.value ?? "").replace(/<[^>]+>/g, " ").slice(0, 300);
     out.push({ provider: "wikimedia", kind: "image", externalId: p.title, url: ii.thumburl || ii.url, pageUrl: ii.descriptionurl, author: artist, license: lic, attribution: `${artist} — ${lic}, vía Wikimedia Commons`, width: ii.width, height: ii.height, headers: { "User-Agent": UA }, meta: `${p.title.replace(/^File:|\.\w+$/g, "").replace(/[_-]+/g, " ")} ${desc}` });

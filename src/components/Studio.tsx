@@ -6,6 +6,7 @@ import type { ProjectView } from "@/lib/projects";
 import { Alert, Button, Card, CostDialog, Field, Select, Toggle, api, inputCls, fmtTime, type Estimate } from "./ui";
 import { ScenesPanel } from "./ScenesPanel";
 import { SeoPanel } from "./SeoPanel";
+import { ThumbnailsPanel } from "./ThumbnailsPanel";
 import { usePush } from "./pwa";
 import { VisualModeField, AiPlanPanel } from "./AiVisual";
 
@@ -442,20 +443,8 @@ export function Studio({ projectId: initialId }: { projectId?: string }) {
             )}
           </Card>
 
-          {project && project.thumbnails.length > 0 && (
-            <Card step="5" title="Miniaturas">
-              <div className="grid gap-3">
-                {project.thumbnails.map((t, i) => (
-                  <div key={t} className="group relative overflow-hidden rounded-xl border border-line">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={`${t}?v=${encodeURIComponent(project.updatedAt)}`} alt={`Miniatura ${i + 1}`} className="aspect-video w-full object-cover" />
-                    <a href={`${t}?descargar=1`} className="absolute bottom-2 right-2 rounded-lg bg-black/75 px-3 py-1.5 text-xs font-semibold text-gold">
-                      ⬇️ Propuesta {i + 1}
-                    </a>
-                  </div>
-                ))}
-              </div>
-            </Card>
+          {project && (project.video || project.thumbnails.length > 0) && (
+            <ThumbnailsPanel projectId={project.id} busy={!!running} onChanged={() => load(project.id)} onError={setError} />
           )}
         </div>
       </div>

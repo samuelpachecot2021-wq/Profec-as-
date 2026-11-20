@@ -188,6 +188,30 @@ export default function Settings() {
             </Button>
           </Card>
 
+          <Card title="Miniaturas">
+            <Field
+              label="Estilo automático"
+              hint="Inteligente: analiza el guion y elige «Noticias y actualidad» (fotos reales y verificadas de los protagonistas y lugares) o «Bíblico cinematográfico» (imágenes cinematográficas e IA del video)."
+            >
+              <Select
+                value={v("THUMBNAIL_STYLE") || "inteligente"}
+                onChange={(x) => setV("THUMBNAIL_STYLE", x)}
+                options={[
+                  { value: "inteligente", label: "Inteligente (recomendado)" },
+                  { value: "noticias", label: "Noticias y actualidad" },
+                  { value: "biblico", label: "Bíblico cinematográfico" },
+                ]}
+              />
+            </Field>
+            <p className="mt-2 text-xs text-zinc-500">
+              Se crean 3 propuestas (protagonista, acontecimiento y titular de alto impacto) al tamaño del video: 1080×1920 en vertical y 1920×1080 en horizontal. Las fotos de personas reales
+              vienen de Wikimedia Commons con licencia libre, autor y fecha, y su identidad se verifica en Wikidata; nunca se generan rostros de personas reales con IA. Sin costo.
+            </p>
+            <Button variant="gold" className="mt-4 w-full" onClick={() => save()} loading={busy}>
+              Guardar preferencias
+            </Button>
+          </Card>
+
           <MusicLibrary />
           <MediaLibrary />
         </div>

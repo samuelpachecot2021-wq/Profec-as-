@@ -85,7 +85,11 @@ Nunca gasta más del 20 % sobre lo autorizado y se detiene al llegar al **presup
   Puede subir sus propias pistas (p. ej. de la Biblioteca de audio de YouTube) en *Ajustes*.
 * **Subtítulos** grandes, blancos con borde negro y **palabras clave en amarillo**, respetando las zonas seguras de Reels, TikTok y Shorts, posición configurable, **SRT** descargable y traducción opcional al inglés.
 * **Formatos** 16:9, 9:16, 4:5 y 1:1 en 720p, 1080p, 1440p y 4K · **MP4 H.264 + AAC**, sonido normalizado para YouTube (−14 LUFS).
-* **3 miniaturas** 1280×720 de alto contraste en rojo, amarillo, blanco, negro y dorado.
+* **3 miniaturas** al tamaño del video (1920×1080 en horizontal, 1080×1920 en vertical): *Protagonista*, *Acontecimiento* y *Titular de alto impacto*,
+  con letras grandes ajustadas al píxel y palabras clave resaltadas, sin marcas de agua. Estilo **Noticias y actualidad** (fotos reales de los
+  protagonistas y lugares desde Wikimedia Commons, con identidad verificada en Wikidata, licencia, autor y fecha comprobados; nunca rostros
+  generados con IA) o **Bíblico cinematográfico** (imágenes del video, incluidas las de Runway), elegido automáticamente según el guion
+  («Inteligente») o fijado en Ajustes. Titulares comprobados contra el guion; se puede cambiar el titular o la foto de una propuesta sin rehacer las demás.
 * **YouTube:** 5 títulos (en MAYÚSCULAS y en estilo oración), 3 títulos de miniatura, descripción, 3 hashtags, palabras clave,
   capítulos con marcas de tiempo y publicación para Facebook.
 

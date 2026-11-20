@@ -186,6 +186,21 @@ tres copias completas del video; con un volumen pequeño el disco se llenaba al 
 
 ---
 
+## 🖼️ Miniaturas
+
+* **Ajustes → Miniaturas:** *Inteligente* (recomendado), *Noticias y actualidad* o *Bíblico cinematográfico*.
+* En el proyecto, apartado **Miniaturas**: 3 propuestas; **✏️ Titular** (texto y palabras en amarillo), **🔄 Foto** (fotos sugeridas,
+  búsqueda de una persona/lugar en Wikimedia Commons o foto propia con su licencia), **★ Principal** (la que descarga «Descargar miniatura»)
+  y **Regenerar** (reutiliza el análisis guardado, sin costo).
+* **Fotos de personas reales:** solo de Wikimedia Commons, con identidad verificada en Wikidata (imagen oficial o archivo marcado
+  «representa a» y con el nombre en el título), licencia que permite uso comercial, autor y fecha. Los créditos se añaden solos a la descripción.
+  Muchas fotos oficiales de políticos tienen licencia **CC BY-SA**: si la app avisa de ello, puede activarla en *Ajustes → Licencias de imágenes*
+  (obliga a atribuir al autor, cosa que la app hace en la descripción).
+* No necesita claves ni tiene costo. Con Claude configurado, el análisis del guion se incluye en la estimación del video (≈ 0,01–0,03 USD).
+* Si una miniatura usa una recreación generada con IA (estilo bíblico), al subirla a YouTube marque «contenido alterado o sintético».
+
+---
+
 ## 🎨 Producción visual con IA (Runway)
 
 **Proveedor integrado:** Runway (API oficial, `api.dev.runwayml.com`). Una sola clave sirve para imágenes y videos.
