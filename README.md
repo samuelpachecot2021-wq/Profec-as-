@@ -90,6 +90,9 @@ Nunca gasta más del 20 % sobre lo autorizado y se detiene al llegar al **presup
   protagonistas y lugares desde Wikimedia Commons, con identidad verificada en Wikidata, licencia, autor y fecha comprobados; nunca rostros
   generados con IA) o **Bíblico cinematográfico** (imágenes del video, incluidas las de Runway), elegido automáticamente según el guion
   («Inteligente») o fijado en Ajustes. Titulares comprobados contra el guion; se puede cambiar el titular o la foto de una propuesta sin rehacer las demás.
+  Encuadre con detección local de rostros (sin cortar caras y agrandándolas cuando son pequeñas), titulares dentro de las zonas visibles de Shorts.
+* **Descargar video con portada integrada** (para YouTube Shorts): copia del MP4 que empieza con la miniatura principal (0,5–1 s, en silencio)
+  y sigue con el video completo. La imagen se une sin recomprimir y el sonido queda sincronizado al fotograma; el video original no cambia.
 * **YouTube:** 5 títulos (en MAYÚSCULAS y en estilo oración), 3 títulos de miniatura, descripción, 3 hashtags, palabras clave,
   capítulos con marcas de tiempo y publicación para Facebook.
 

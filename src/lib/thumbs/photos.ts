@@ -21,8 +21,8 @@ import { norm, type Entity } from "./analyze";
 export type PhotoCandidate = {
   id: string;
   source: "wikimedia" | "proyecto" | "propio" | "pexels" | "pixabay" | "unsplash" | "nasa" | "biblioteca";
-  /** real = fotografía documental del sujeto · stock = foto de archivo con licencia · ia = recreación generada con IA */
-  kind: "real" | "stock" | "ia";
+  /** real = fotografía documental del sujeto · stock = foto de archivo con licencia · ia = recreación generada con IA · fondo = fondo de diseño generado por la app */
+  kind: "real" | "stock" | "ia" | "fondo";
   role: "persona" | "lugar" | "acontecimiento" | "escena";
   subject?: string;
   subjectQid?: string;
@@ -37,6 +37,8 @@ export type PhotoCandidate = {
   localPath?: string;
   width?: number;
   height?: number;
+  /** Altura del rostro principal (fracción de la foto), si se comprobó. */
+  face?: number;
   score: number;
 };
 
@@ -215,6 +217,8 @@ function fromCommons(p: CommonsPage, ent: ResolvedEntity, role: PhotoCandidate["
   }
   const age = date ? new Date().getFullYear() - Number(date.slice(0, 4)) : null;
   let score = how === "p18" ? 50 : 40;
+  // adornos navideños: fuera de lugar en miniaturas de noticias y profecía
+  if (/christmas|navidad|xmas|nativity scene|santa claus|papá noel/i.test(`${title} ${strip(m.ImageDescription?.value)}`)) score -= 25;
   if (role === "persona") {
     // personas: se priorizan las fotos recientes
     if (age !== null) score += Math.max(-25, 30 - 6 * age);
@@ -289,13 +293,13 @@ export function projectCandidates(assets: AssetRow[]): PhotoCandidate[] {
   const seen = new Set<number>();
   const out: PhotoCandidate[] = [];
   for (const a of assets) {
-    if (!a || seen.has(a.id) || a.provider === "local") continue;
+    if (!a || seen.has(a.id)) continue;
     seen.add(a.id);
     const ai = !!a.is_ai || /runway|ia/.test(a.provider);
     out.push({
       id: `asset:${a.id}`,
       source: a.provider === "propio" ? "propio" : "proyecto",
-      kind: ai ? "ia" : "stock",
+      kind: ai ? "ia" : a.provider === "local" ? "fondo" : "stock",
       role: "escena",
       title: a.attribution ?? a.provider,
       author: a.author ?? (ai ? "Generado con IA" : a.provider),
@@ -304,7 +308,8 @@ export function projectCandidates(assets: AssetRow[]): PhotoCandidate[] {
       localPath: a.local_path,
       width: a.width ?? undefined,
       height: a.height ?? undefined,
-      score: (a.kind === "image" ? 10 : 6) + (ai ? 4 : 0),
+      // los fondos generados por la app solo se usan si no hay ninguna otra imagen
+      score: a.provider === "local" ? -50 : (a.kind === "image" ? 10 : 6) + (ai ? 4 : 0),
     });
   }
   return out;

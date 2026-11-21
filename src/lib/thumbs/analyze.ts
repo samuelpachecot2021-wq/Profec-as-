@@ -198,12 +198,20 @@ export function localAnalysis(o: { script: string; title: string; topic: string;
     H.impacto = "¿SE CUMPLE LA PROFECÍA?";
     HL.impacto = ["PROFECÍA?"];
   } else {
-    const t = (o.seoTitles ?? []).map((x) => honestHeadline(x, o.script)).filter((x): x is string => !!x);
-    H.protagonista = t[0] ?? upper(topic);
-    H.acontecimiento = t[1] ?? upper(topic);
-    H.impacto = t[2] ?? "¿SEÑAL DEL FIN?";
+    // titulares por tema bíblico; cada uno exige que el guion contenga sus palabras clave
+    const theme = BIBLE_THEMES.map((t) => ({ t, n: t.keys.reduce((a, k) => a + count(s, k), 0) })).filter((x) => x.n > 0).sort((a, b) => b.n - a.n)[0]?.t ?? BIBLE_THEMES[BIBLE_THEMES.length - 1];
+    const ok = (h: { text: string; needs?: string[] }) => (!h.needs || h.needs.every((k) => count(s, k))) && honestHeadline(h.text, `${o.title} ${o.script}`);
+    const pickH = (list: { text: string; needs?: string[] }[], used: string[]) => list.find((h) => ok(h) && !used.includes(h.text))?.text;
+    const seo = (o.seoTitles ?? []).map((x) => honestHeadline(x, o.script)).filter((x): x is string => !!x);
+    H.protagonista = pickH(theme.protagonista, []) ?? seo[0] ?? upper(topic);
+    H.acontecimiento = pickH(theme.acontecimiento, [H.protagonista]) ?? seo[1] ?? upper(topic);
+    H.impacto = pickH(theme.impacto, [H.protagonista, H.acontecimiento]) ?? seo[2] ?? "¿SEÑALES DEL FIN?";
+    const PRIORITY = ["ARREBATAMIENTO", "SEGUNDA VENIDA", "ANTICRISTO", "BESTIA", "JESÚS", "CRISTO", "FIN", "PREPARADOS", "LISTO", "PROFECÍA", "JERUSALÉN", "ISRAEL", "ORACIÓN", "DIOS", "SOLO", "OJOS", "PERSEGUIDOS", "PERSEGUIDA", "IGLESIA", "BIBLIA", "TEMAS"];
     const key = (x: string) => {
-      const ws = x.replace(/[¿?¡!:,.]/g, "").split(" ").filter((w) => w.length > 3);
+      const clean = x.replace(/[¿?¡!:,.]/g, "");
+      const p = PRIORITY.find((w) => ` ${clean} `.includes(` ${w} `));
+      if (p) return p.split(" ");
+      const ws = clean.split(" ").filter((w) => w.length > 3);
       return ws.length ? [ws.sort((a, b) => b.length - a.length)[0]] : [];
     };
     HL.protagonista = key(H.protagonista);
@@ -229,6 +237,53 @@ export function localAnalysis(o: { script: string; title: string; topic: string;
     engine: "local",
   };
 }
+
+type H = { text: string; needs?: string[] };
+/** Titulares breves por tema (preguntas cuando es interpretación; nunca cifras ni fechas). */
+const BIBLE_THEMES: { keys: string[]; protagonista: H[]; acontecimiento: H[]; impacto: H[] }[] = [
+  {
+    keys: ["arrebatamiento", "rapto", "abrir y cerrar de ojos"],
+    protagonista: [{ text: "EL ARREBATAMIENTO", needs: ["arrebatamiento"] }, { text: "CRISTO VIENE POR SU IGLESIA", needs: ["iglesia"] }],
+    acontecimiento: [{ text: "UN ABRIR Y CERRAR DE OJOS", needs: ["abrir y cerrar de ojos"] }, { text: "¿LA IGLESIA SERÁ ARREBATADA?", needs: ["iglesia"] }],
+    impacto: [{ text: "¿ESTAMOS PREPARADOS?" }, { text: "¿ESTÁS LISTO?" }],
+  },
+  {
+    keys: ["segunda venida", "regreso de cristo", "volvera", "vendra otra vez", "vuelve"],
+    protagonista: [{ text: "JESÚS LO ADVIRTIÓ", needs: ["jesus"] }, { text: "CRISTO VOLVERÁ", needs: ["cristo"] }],
+    acontecimiento: [{ text: "LA SEGUNDA VENIDA", needs: ["segunda venida"] }, { text: "¿SEÑALES DEL FIN?" }],
+    impacto: [{ text: "¿ESTAMOS PREPARADOS?" }, { text: "¿SEÑALES DEL FIN?" }],
+  },
+  {
+    keys: ["persecucion", "perseguidos", "martir", "martires"],
+    protagonista: [{ text: "CRISTIANOS PERSEGUIDOS", needs: ["perseguid"] }, { text: "JESÚS LO ANUNCIÓ", needs: ["jesus"] }],
+    acontecimiento: [{ text: "LA IGLESIA PERSEGUIDA", needs: ["iglesia"] }, { text: "PERSECUCIÓN POR SU FE", needs: ["persecucion"] }],
+    impacto: [{ text: "¿QUÉ DIJO JESÚS?", needs: ["jesus"] }, { text: "¿ESTAMOS PREPARADOS?" }],
+  },
+  {
+    keys: ["jerusalen", "israel", "monte del templo", "sion"],
+    protagonista: [{ text: "JERUSALÉN EN LA PROFECÍA", needs: ["jerusalen"] }, { text: "ISRAEL Y LA PROFECÍA", needs: ["israel"] }],
+    acontecimiento: [{ text: "TODAS LAS MIRADAS EN JERUSALÉN", needs: ["jerusalen"] }, { text: "¿QUÉ DICE LA BIBLIA?", needs: ["biblia"] }],
+    impacto: [{ text: "¿SE CUMPLE LA PROFECÍA?" }, { text: "¿SEÑALES DEL FIN?" }],
+  },
+  {
+    keys: ["oracion", "orar", "fe", "confia"],
+    protagonista: [{ text: "EL PODER DE LA ORACIÓN", needs: ["oracion"] }, { text: "NO TEMAS", needs: ["no temas"] }],
+    acontecimiento: [{ text: "DIOS ESCUCHA", needs: ["dios"] }, { text: "FE EN TIEMPOS DIFÍCILES", needs: ["fe"] }],
+    impacto: [{ text: "¿POR QUÉ ORAR HOY?", needs: ["orar"] }, { text: "NO ESTÁS SOLO" }],
+  },
+  {
+    keys: ["anticristo", "marca de la bestia", "bestia", "666"],
+    protagonista: [{ text: "EL ANTICRISTO", needs: ["anticristo"] }, { text: "LA MARCA DE LA BESTIA", needs: ["marca de la bestia"] }],
+    acontecimiento: [{ text: "¿YA SE PREPARA EL SISTEMA?", needs: ["sistema"] }, { text: "APOCALIPSIS 13", needs: ["apocalipsis 13"] }],
+    impacto: [{ text: "¿ESTAMOS CERCA?" }, { text: "¿SEÑALES DEL FIN?" }],
+  },
+  {
+    keys: [],
+    protagonista: [{ text: "JESÚS LO ADVIRTIÓ", needs: ["jesus"] }, { text: "LA BIBLIA LO ANUNCIÓ", needs: ["biblia"] }],
+    acontecimiento: [{ text: "¿SEÑALES DEL FIN?" }, { text: "LOS ÚLTIMOS TIEMPOS", needs: ["ultimos tiempos"] }],
+    impacto: [{ text: "¿ESTAMOS PREPARADOS?" }, { text: "¿QUÉ VIENE AHORA?" }],
+  },
+];
 
 /** Coste aproximado de caracteres de entrada/salida del análisis con IA (para la estimación). */
 export const ANALYSIS_OUTPUT_CHARS = 1500;
@@ -262,7 +317,7 @@ Devuelve SOLO datos que estén en el guion. No inventes personas, cargos, fechas
 - style: "noticias" si el video trata noticias actuales, política, conflictos o acontecimientos reales con protagonistas reales; "biblico" si es una enseñanza, profecía o reflexión sin un acontecimiento actual concreto.
 - people: personas reales y vivas o históricas recientes nombradas en el guion (no personajes bíblicos), con su nombre completo habitual.
 - places: ciudades o lugares concretos; countries: países. event: el acontecimiento principal en 2-5 palabras; event_query_en: búsqueda breve en inglés para encontrar fotos documentales de ese acontecimiento.
-- Titulares de miniatura (2 a 5 palabras, MAYÚSCULAS, español): uno centrado en el protagonista, otro en el acontecimiento y otro de alto impacto. Deben ser atractivos pero HONESTOS: nada que el guion no respalde, sin fechas ni cifras inventadas, sin afirmar como hecho una interpretación profética (use preguntas si es interpretación), sin "última hora", "confirmado" ni alarmismo falso. Usa "arrebatamiento", nunca "rapto".
+- Titulares de miniatura (2 a 5 palabras, MAYÚSCULAS, español): uno centrado en el protagonista, otro en el acontecimiento y otro de alto impacto. Deben ser atractivos pero HONESTOS: nada que el guion no respalde, sin fechas ni cifras inventadas, sin afirmar como hecho una interpretación profética (use preguntas si es interpretación), sin "última hora", "confirmado" ni alarmismo falso. Usa "arrebatamiento", nunca "rapto". Ejemplos de estilo para un video sobre el regreso de Cristo: «¿SEÑALES DEL FIN?», «JESÚS LO ADVIRTIÓ», «¿ESTAMOS PREPARADOS?». Los tres titulares deben ser distintos entre sí.
 - highlight_*: la palabra o frase (1-2 palabras) de cada titular que debe resaltarse en amarillo, copiada exactamente del titular.`,
       prompt: JSON.stringify({ titulo: o.title, tema: o.topic, guion: o.script.slice(0, 24000) }),
       schema: {

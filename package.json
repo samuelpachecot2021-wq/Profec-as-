@@ -23,6 +23,7 @@
   "homepage": "https://github.com/samuelpachecot2021-wq/Profec-as-#readme",
   "dependencies": {
     "@anthropic-ai/sdk": "^1.10.0",
+    "@vladmandic/face-api": "1.7.15",
     "better-sqlite3": "^13.2.0",
     "mammoth": "^1.13.0",
     "msedge-tts": "^2.1.1",

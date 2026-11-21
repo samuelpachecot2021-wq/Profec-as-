@@ -3,6 +3,7 @@ import path from "node:path";
 import { run } from "../util";
 import { FONTS_DIR } from "../paths";
 import { textWidth } from "./fontmetrics";
+import { faceCrop, type FaceInfo } from "./faces";
 
 /**
  * Diseño de miniaturas con FFmpeg (sin navegador): fotografía, degradados, titular con
@@ -19,7 +20,7 @@ export const DESIGN_LABEL: Record<Design, string> = {
   impacto: "Titular de alto impacto",
 };
 
-type Palette = { accent: string; box: string; boxText: string; text: string; tagText: string; grade: string; tint: string };
+type Palette = { accent: string; box: string; boxText: string; text: string; tagText: string; grade: string; tint: string; box2: string; box2Text: string; hlText: string };
 const PALETTE: Record<ThumbStyle, Palette> = {
   noticias: {
     accent: "0xE11D2A",
@@ -27,8 +28,11 @@ const PALETTE: Record<ThumbStyle, Palette> = {
     boxText: "0x0A0A0A",
     text: "white",
     tagText: "white",
-    grade: "eq=contrast=1.12:saturation=1.12:brightness=0.01,unsharp=5:5:0.7",
-    tint: "colorchannelmixer=rr=0.9:gg=0.55:bb=0.55",
+    grade: "eq=contrast=1.1:saturation=1.14:brightness=0.03:gamma=1.04,unsharp=5:5:0.7",
+    tint: "colorchannelmixer=rr=0.95:gg=0.62:bb=0.6",
+    box2: "0xE11D2A",
+    box2Text: "white",
+    hlText: "0xFFD60A",
   },
   biblico: {
     accent: "0xC9962B",
@@ -36,8 +40,11 @@ const PALETTE: Record<ThumbStyle, Palette> = {
     boxText: "0x0A0A0A",
     text: "white",
     tagText: "0x111111",
-    grade: "eq=contrast=1.1:saturation=1.08,colorbalance=rm=0.05:gm=0.02:bm=-0.05,unsharp=5:5:0.6",
-    tint: "colorchannelmixer=rr=0.85:gg=0.68:bb=0.45",
+    grade: "eq=contrast=1.08:saturation=1.08:brightness=0.03:gamma=1.04,colorbalance=rm=0.05:gm=0.02:bm=-0.05,unsharp=5:5:0.6",
+    tint: "colorchannelmixer=rr=0.92:gg=0.75:bb=0.52",
+    box2: "0xC9962B",
+    box2Text: "0x0A0A0A",
+    hlText: "0xE8B845",
   },
 };
 
@@ -60,8 +67,11 @@ export type RenderInput = {
   tag?: string | null;
   /** Nombre del protagonista (rótulo sobre su foto). */
   name?: string | null;
-  /** Encuadre vertical de la foto (0 = arriba, 0,5 = centro). */
+  /** Encuadre vertical de la foto (0 = arriba, 0,5 = centro) si no se detecta rostro. */
   focusY?: number;
+  /** Rostros detectados en la foto principal / de fondo (encuadre sin cortar caras). */
+  photoFaces?: FaceInfo | null;
+  bgFaces?: FaceInfo | null;
   out: string;
   tmpDir: string;
 };
@@ -150,6 +160,7 @@ function drawHeadline(
   pal: Palette,
   tmpDir: string,
   prefix: string,
+  mode: "box" | "text" | "box2" = "box",
 ) {
   const f: string[] = [];
   const total = L.lines.length * L.lineGap - L.size * 0.2;
@@ -165,12 +176,17 @@ function drawHeadline(
     for (const t of line.tokens) {
       const file = path.join(tmpDir, `${prefix}-${k++}.txt`);
       fs.writeFileSync(file, t.text);
-      if (t.hl) {
+      if (t.hl && mode === "text") {
+        // palabra clave en color, sin caja
+        f.push(
+          `drawtext=fontfile='${font(HEAVY)}':textfile='${ff(file)}':fontsize=${L.size}:fontcolor=${pal.hlText}:borderw=${border}:bordercolor=black:shadowx=${shadow}:shadowy=${shadow}:shadowcolor=black@0.55:x=${Math.round(x + L.padX)}:y=${baseline}:y_align=baseline`,
+        );
+      } else if (t.hl) {
         const bx = Math.round(x);
         const by = Math.round(baseline - L.size * CAP - L.padY);
         f.push(`drawbox=x=${bx + shadow}:y=${by + shadow}:w=${Math.round(t.w)}:h=${Math.round(L.size * CAP + 2 * L.padY)}:color=black@0.45:t=fill`);
-        f.push(`drawbox=x=${bx}:y=${by}:w=${Math.round(t.w)}:h=${Math.round(L.size * CAP + 2 * L.padY)}:color=${pal.box}:t=fill`);
-        f.push(`drawtext=fontfile='${font(HEAVY)}':textfile='${ff(file)}':fontsize=${L.size}:fontcolor=${pal.boxText}:x=${Math.round(x + L.padX)}:y=${baseline}:y_align=baseline`);
+        f.push(`drawbox=x=${bx}:y=${by}:w=${Math.round(t.w)}:h=${Math.round(L.size * CAP + 2 * L.padY)}:color=${mode === "box2" ? pal.box2 : pal.box}:t=fill`);
+        f.push(`drawtext=fontfile='${font(HEAVY)}':textfile='${ff(file)}':fontsize=${L.size}:fontcolor=${mode === "box2" ? pal.box2Text : pal.boxText}:x=${Math.round(x + L.padX)}:y=${baseline}:y_align=baseline`);
       } else {
         f.push(
           `drawtext=fontfile='${font(HEAVY)}':textfile='${ff(file)}':fontsize=${L.size}:fontcolor=${pal.text}:borderw=${border}:bordercolor=black:shadowx=${shadow}:shadowy=${shadow}:shadowcolor=black@0.55:x=${Math.round(x)}:y=${baseline}:y_align=baseline`,
@@ -203,13 +219,25 @@ function pill(text: string, x: number, y: number, size: number, bg: string, colo
   };
 }
 
-/** Escala y recorta una foto para cubrir w×h, con el encuadre vertical indicado. */
-const cover = (w: number, h: number, fy = 0.3) => `scale=${w}:${h}:force_original_aspect_ratio=increase:flags=lanczos,crop=${w}:${h}:(iw-${w})/2:(ih-${h})*${fy.toFixed(2)},setsar=1`;
+/**
+ * Escala y recorta una foto para cubrir w×h sin deformarla. Si se detectó un rostro, el
+ * recorte lo incluye entero (con margen para el pelo y el mentón) y lo agranda si es pequeño;
+ * si no, se usa el encuadre vertical indicado.
+ */
+function fit(w: number, h: number, faces: FaceInfo | null | undefined, fy = 0.3, o: { faceFrac?: number; faceTop?: number; faceX?: number } = {}) {
+  const c = faceCrop(faces ?? null, w, h, o);
+  if (c) return `crop=${c.w}:${c.h}:${c.x}:${c.y},scale=${w}:${h}:flags=lanczos,setsar=1`;
+  return `scale=${w}:${h}:force_original_aspect_ratio=increase:flags=lanczos,crop=${w}:${h}:(iw-${w})/2:(ih-${h})*${fy.toFixed(2)},setsar=1`;
+}
 
 /** Capa negra con transparencia en degradado (expresión de alfa en X/Y). */
 const shade = (w: number, h: number, alpha: string) => `color=c=black:s=${w}x${h}:d=1,format=rgba,geq=r=0:g=0:b=0:a='${alpha}'`;
 
-/** Genera una miniatura JPEG; si supera 2 MB (límite de YouTube) se recomprime. */
+/**
+ * Genera una miniatura JPEG; si supera 2 MB (límite de YouTube) se recomprime.
+ * Zonas visibles: en vertical, titulares entre el 15 % y el 85 % de la altura (recortes de
+ * Shorts/Reels); en horizontal, nada importante en la esquina inferior derecha (duración).
+ */
 export async function renderThumbnail(i: RenderInput): Promise<{ file: string; bytes: number }> {
   fs.mkdirSync(i.tmpDir, { recursive: true });
   fs.mkdirSync(path.dirname(i.out), { recursive: true });
@@ -221,7 +249,9 @@ export async function renderThumbnail(i: RenderInput): Promise<{ file: string; b
   const chains: string[] = [];
   const photo = i.photo ?? null;
   const bg = i.bg ?? photo;
+  const bgFaces = i.bg ? i.bgFaces : i.photoFaces;
   const fy = i.focusY ?? 0.3;
+  const hasFace = !!i.photoFaces?.faces.length;
   let draws: string[] = [];
   const m = Math.round(Math.min(W, H) * 0.055); // margen
   const unit = Math.min(W, H);
@@ -234,10 +264,13 @@ export async function renderThumbnail(i: RenderInput): Promise<{ file: string; b
   // ── Fondo ──
   if (bg) {
     const b = addInput(bg);
-    if (i.design === "protagonista" && photo && bg === photo) chains.push(`[${b}:v]${cover(W, H, fy)},gblur=sigma=${Math.round(unit / 40)},eq=brightness=-0.12:saturation=0.8[bg]`);
-    else if (i.design === "protagonista") chains.push(`[${b}:v]${cover(W, H, 0.4)},gblur=sigma=${Math.round(unit / 90)},${pal.grade},eq=brightness=-0.06[bg]`);
-    else if (i.design === "impacto") chains.push(`[${b}:v]${cover(W, H, fy)},${pal.grade},${pal.tint},eq=brightness=-0.07:contrast=1.1,vignette=PI/3.6[bg]`);
-    else chains.push(`[${b}:v]${cover(W, H, fy)},${pal.grade},vignette=PI/4.2[bg]`);
+    if (i.design === "protagonista" && photo && bg === photo) chains.push(`[${b}:v]${fit(W, H, null, fy)},gblur=sigma=${Math.round(unit / 40)},eq=brightness=-0.08:saturation=0.85[bg]`);
+    else if (i.design === "protagonista") chains.push(`[${b}:v]${fit(W, H, null, 0.4)},gblur=sigma=${Math.round(unit / 110)},${pal.grade}[bg]`);
+    else if (i.design === "impacto") {
+      // con rostro: la cara a un lado (horizontal) o arriba (vertical) y el titular sin taparla
+      const o = vertical ? { faceFrac: 0.3, faceTop: 0.12, faceX: 0.5 } : { faceFrac: 0.42, faceTop: 0.18, faceX: 0.74 };
+      chains.push(`[${b}:v]${fit(W, H, bgFaces, fy, o)},${pal.grade},${pal.tint},eq=contrast=1.08,vignette=PI/4[bg]`);
+    } else chains.push(`[${b}:v]${fit(W, H, bgFaces, fy, { faceFrac: 0.3, faceTop: 0.2 })},${pal.grade},vignette=PI/4.6[bg]`);
   } else {
     // sin foto: fondo oscuro con un resplandor del color del estilo
     chains.push(`color=c=0x0B0B0F:s=${W}x${H}:d=1,format=rgb24,geq=r='clip(11+${i.style === "noticias" ? 120 : 110}*exp(-((X-W*0.7)^2+(Y-H*0.35)^2)/(2*(W*0.35)^2)),0,255)':g='clip(11+${i.style === "noticias" ? 12 : 70}*exp(-((X-W*0.7)^2+(Y-H*0.35)^2)/(2*(W*0.35)^2)),0,255)':b='clip(15+${i.style === "noticias" ? 18 : 20}*exp(-((X-W*0.7)^2+(Y-H*0.35)^2)/(2*(W*0.35)^2)),0,255)'[bg]`);
@@ -255,86 +288,90 @@ export async function renderThumbnail(i: RenderInput): Promise<{ file: string; b
   let valign: "top" | "center" | "bottom" = "center";
   let maxLines = 3;
   let maxSize = Math.round(unit * (vertical ? 0.15 : 0.175));
+  let mode: "box" | "text" | "box2" = "box";
+  const tagSize = Math.round(unit * 0.05);
 
   if (i.design === "protagonista") {
     if (vertical) {
       const ph = Math.round(H * 0.6);
       if (photo) {
         const p = addInput(photo);
-        chains.push(`[${p}:v]${cover(W, ph, Math.min(fy, 0.2))},${pal.grade},format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='255*clip((H-Y)/(H*0.28),0,1)'[ph]`);
+        chains.push(`[${p}:v]${fit(W, ph, i.photoFaces, Math.min(fy, 0.2), { faceFrac: 0.4, faceTop: 0.2 })},${pal.grade},format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='255*clip((H-Y)/(H*0.25),0,1)'[ph]`);
         over("ph", 0, 0);
       }
-      chains.push(`${shade(W, H, `255*clip((Y-H*0.45)/(H*0.3),0,0.88)`)}[sh]`);
+      chains.push(`${shade(W, H, `255*clip((Y-H*0.5)/(H*0.25),0,0.82)`)}[sh]`);
       over("sh", 0, 0);
-      textBox = { x: m, y: Math.round(H * (i.tag ? 0.655 : 0.61)), w: W - 2 * m, h: Math.round(H * (i.tag ? 0.24 : 0.27)) };
+      textBox = { x: m, y: Math.round(H * (i.tag ? 0.645 : 0.61)), w: W - 2 * m, h: Math.round(H * (i.tag ? 0.205 : 0.24)) };
       align = "center";
       valign = "top";
-      maxLines = 3;
-      if (i.name) {
-        const pl = pill(i.name, W / 2, Math.round(H * 0.525), Math.round(unit * 0.04), "black@0.75", "white", i.tmpDir, `${prefix}-name`, "center");
-        draws.push(...pl.filters);
-      }
+      if (i.name) draws.push(...pill(i.name, W / 2, Math.round(H * 0.535), Math.round(unit * 0.04), "black@0.72", "white", i.tmpDir, `${prefix}-name`, "center").filters);
+      if (i.tag) draws.push(...pill(i.tag, Math.round(W / 2), Math.round(H * 0.585), tagSize, pal.accent, pal.tagText, i.tmpDir, `${prefix}-tag`, "center").filters);
     } else {
-      const pw = Math.round(W * 0.56);
+      const pw = Math.round(W * 0.58);
       if (photo) {
         const p = addInput(photo);
-        chains.push(`[${p}:v]${cover(pw, H, Math.min(fy, 0.2))},${pal.grade},format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='255*clip(X/(W*0.32),0,1)'[ph]`);
+        chains.push(`[${p}:v]${fit(pw, H, i.photoFaces, Math.min(fy, 0.2), { faceFrac: 0.5, faceTop: 0.16, faceX: 0.55 })},${pal.grade},format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='255*clip(X/(W*0.3),0,1)'[ph]`);
         over("ph", W - pw, 0);
       }
-      chains.push(`${shade(W, H, `255*clip(1-X/(W*0.62),0,0.86)`)}[sh]`);
+      chains.push(`${shade(W, H, `255*clip(0.9-X/(W*0.6),0,0.78)`)}[sh]`);
       over("sh", 0, 0);
-      textBox = { x: m + Math.round(unit * 0.01), y: Math.round(H * 0.2), w: Math.round(W * 0.5), h: Math.round(H * 0.68) };
-      maxLines = 3;
-      if (i.name) {
-        const pl = pill(i.name, W - m, H - m - Math.round(unit * 0.07), Math.round(unit * 0.036), "black@0.75", "white", i.tmpDir, `${prefix}-name`, "right");
-        draws.push(...pl.filters);
-      }
-    }
-    if (i.tag) {
-      const pl = pill(i.tag, vertical ? Math.round(W / 2) : textBox.x, vertical ? Math.round(H * 0.6) : m, Math.round(unit * 0.05), pal.accent, pal.tagText, i.tmpDir, `${prefix}-tag`, vertical ? "center" : "left");
-      draws.push(...pl.filters);
+      textBox = { x: m + Math.round(unit * 0.01), y: Math.round(H * 0.2), w: Math.round(W * 0.5), h: Math.round(H * 0.66) };
+      // nombre arriba a la derecha (abajo a la derecha YouTube muestra la duración)
+      if (i.name) draws.push(...pill(i.name, W - m, m, Math.round(unit * 0.036), "black@0.72", "white", i.tmpDir, `${prefix}-name`, "right").filters);
+      if (i.tag) draws.push(...pill(i.tag, textBox.x, m, tagSize, pal.accent, pal.tagText, i.tmpDir, `${prefix}-tag`, "left").filters);
     }
   } else if (i.design === "acontecimiento") {
-    chains.push(`${shade(W, H, vertical ? `255*clip((Y-H*0.4)/(H*0.35),0,0.9)` : `255*clip((Y-H*0.35)/(H*0.5),0,0.9)`)}[sh]`);
+    mode = "text";
+    chains.push(`${shade(W, H, vertical ? `255*clip((Y-H*0.45)/(H*0.32),0,0.85)` : `255*clip((Y-H*0.4)/(H*0.48),0,0.85)`)}[sh]`);
     over("sh", 0, 0);
     if (vertical) {
-      textBox = { x: m, y: Math.round(H * 0.58), w: W - 2 * m, h: Math.round(H * 0.3) };
+      textBox = { x: m, y: Math.round(H * 0.56), w: W - 2 * m, h: Math.round(H * 0.28) };
       align = "center";
       valign = "bottom";
       maxLines = 4;
     } else {
-      textBox = { x: m + Math.round(unit * 0.01), y: Math.round(H * 0.48), w: Math.round(W * 0.88), h: Math.round(H * 0.42) };
+      textBox = { x: m + Math.round(unit * 0.01), y: Math.round(H * 0.46), w: Math.round(W * 0.8), h: Math.round(H * 0.42) };
       valign = "bottom";
       maxLines = 2;
     }
-    if (i.tag) {
-      const pl = pill(i.tag, vertical ? Math.round(W / 2) : m + Math.round(unit * 0.01), vertical ? Math.round(H * 0.05) : m, Math.round(unit * 0.05), pal.accent, pal.tagText, i.tmpDir, `${prefix}-tag`, vertical ? "center" : "left");
-      draws.push(...pl.filters);
-    }
+    if (i.tag) draws.push(...pill(i.tag, vertical ? Math.round(W / 2) : m + Math.round(unit * 0.01), vertical ? Math.round(H * 0.16) : m, tagSize, pal.accent, pal.tagText, i.tmpDir, `${prefix}-tag`, vertical ? "center" : "left").filters);
   } else {
-    // impacto: titular gigante centrado con barras de acento
-    chains.push(`${shade(W, H, `255*clip(0.18+0.36*abs(Y-H/2)/(H/2),0,0.55)`)}[sh]`);
+    // impacto: titular gigante con barras de acento; si hay un rostro, no lo tapa
+    mode = "box2";
+    if (hasFace && photo && !vertical) {
+      chains.push(`${shade(W, H, `255*clip(0.85-X/(W*0.75),0.1,0.75)`)}[sh]`);
+      textBox = { x: m + Math.round(unit * 0.01), y: Math.round(H * 0.16), w: Math.round(W * 0.56), h: Math.round(H * 0.66) };
+      align = "left";
+    } else if (hasFace && photo && vertical) {
+      chains.push(`${shade(W, H, `255*clip((Y-H*0.4)/(H*0.3),0.08,0.8)`)}[sh]`);
+      textBox = { x: m, y: Math.round(H * 0.5), w: W - 2 * m, h: Math.round(H * 0.32) };
+      align = "center";
+    } else {
+      chains.push(`${shade(W, H, `255*clip(0.18+0.36*abs(Y-H/2)/(H/2),0,0.55)`)}[sh]`);
+      textBox = vertical
+        ? { x: m, y: Math.round(H * 0.26), w: W - 2 * m, h: Math.round(H * 0.46) }
+        : { x: Math.round(W * 0.06), y: Math.round(H * 0.16), w: Math.round(W * 0.88), h: Math.round(H * 0.66) };
+      align = "center";
+    }
     over("sh", 0, 0);
-    textBox = vertical
-      ? { x: m, y: Math.round(H * 0.24), w: W - 2 * m, h: Math.round(H * 0.5) }
-      : { x: Math.round(W * 0.06), y: Math.round(H * 0.16), w: Math.round(W * 0.88), h: Math.round(H * 0.66) };
-    align = "center";
     valign = "center";
     maxLines = vertical ? 4 : 3;
     maxSize = Math.round(unit * (vertical ? 0.17 : 0.2));
   }
 
   const L = layoutText(i.headline, i.highlight, textBox.w, textBox.h, maxLines, maxSize, Math.round(unit * 0.05));
-  const hd = drawHeadline(L, textBox, align, valign, pal, i.tmpDir, `${prefix}-h`);
-  // barra de acento junto al titular
+  const hd = drawHeadline(L, textBox, align, valign, pal, i.tmpDir, `${prefix}-h`, mode);
+  // barras de acento junto al titular
   const barH = Math.max(8, Math.round(unit * 0.012));
+  const textW = Math.min(textBox.w, Math.max(...L.lines.map((l) => l.width)));
   if (i.design === "impacto") {
-    const bw = Math.round(Math.min(textBox.w, Math.max(...L.lines.map((l) => l.width))) * 0.5);
-    draws.push(`drawbox=x=${Math.round(W / 2 - bw / 2)}:y=${hd.top - barH * 3}:w=${bw}:h=${barH}:color=${pal.accent}:t=fill`);
-    draws.push(`drawbox=x=${Math.round(W / 2 - bw / 2)}:y=${hd.bottom + barH * 2}:w=${bw}:h=${barH}:color=${pal.accent}:t=fill`);
+    const bw = Math.round(textW * 0.5);
+    const bx = align === "left" ? textBox.x : Math.round(textBox.x + textBox.w / 2 - bw / 2);
+    draws.push(`drawbox=x=${bx}:y=${hd.top - barH * 3}:w=${bw}:h=${barH}:color=${pal.accent}:t=fill`);
+    draws.push(`drawbox=x=${bx}:y=${hd.bottom + barH * 2}:w=${bw}:h=${barH}:color=${pal.accent}:t=fill`);
     if (i.tag) {
-      const pl = pill(i.tag, Math.round(W / 2), Math.max(m, hd.top - barH * 3 - Math.round(unit * 0.12)), Math.round(unit * 0.042), pal.accent, pal.tagText, i.tmpDir, `${prefix}-tag`, "center");
-      draws.push(...pl.filters);
+      const ty = Math.max(vertical ? Math.round(H * 0.16) : m, hd.top - barH * 3 - Math.round(unit * 0.11));
+      draws.push(...pill(i.tag, align === "left" ? textBox.x : Math.round(W / 2), ty, Math.round(unit * 0.042), pal.accent, pal.tagText, i.tmpDir, `${prefix}-tag`, align === "left" ? "left" : "center").filters);
     }
   } else if (align === "left") {
     draws.push(`drawbox=x=${textBox.x}:y=${hd.bottom + barH * 2}:w=${Math.round(Math.min(textBox.w, unit * 0.32))}:h=${barH}:color=${pal.accent}:t=fill`);

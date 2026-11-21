@@ -8,6 +8,7 @@ import { renderThumbnail, DESIGN_LABEL, type Design, type ThumbStyle } from "./t
 import { analyzeScript, localAnalysis, honestHeadline, type ThumbAnalysis, type Entity } from "./thumbs/analyze";
 import { resolveEntity, photosOfEntity, prefetchEntities, licenseStats, projectCandidates, stockPhotos, ensureLocal, type PhotoCandidate } from "./thumbs/photos";
 import { fullDescription, type Seo } from "./seo";
+import { detectFaces, mainFace, type FaceInfo } from "./thumbs/faces";
 
 /**
  * Generador de miniaturas: analiza el guion, elige el estilo (noticias o bíblico), busca
@@ -153,7 +154,36 @@ async function gatherNews(projectId: string, a: ThumbAnalysis, orientation: "lan
     }
     if (!found.some((c) => c.role !== "persona") && a.event.query) found.push(...(await stockPhotos(projectId, a.event.query, orientation)));
   }
+  await rankByFaces(projectId, found, deadline + 30_000, log);
   return { found, warnings };
+}
+
+/**
+ * Prefiere las fotos de cada protagonista con el rostro grande, nítido y visible: descarga
+ * las mejores candidatas (hasta 4 por persona) y localiza su rostro. Una foto sin rostro
+ * detectable (de espaldas, muy lejos, multitud) baja en la lista.
+ */
+async function rankByFaces(projectId: string, cands: PhotoCandidate[], deadline: number, log: (m: string) => void) {
+  const fotos = path.join(dirOf(projectId), "fotos");
+  const bySubject = new Map<string, PhotoCandidate[]>();
+  for (const c of cands) if (c.role === "persona" && c.subject) bySubject.set(c.subject, [...(bySubject.get(c.subject) ?? []), c]);
+  for (const [subject, list] of bySubject) {
+    let checked = 0;
+    for (const c of [...list].sort((a, b) => b.score - a.score).slice(0, 4)) {
+      if (Date.now() > deadline) break;
+      try {
+        const file = await ensureLocal(c, fotos);
+        const f = mainFace(await detectFaces(file));
+        c.face = f ? Math.round(f.h * 100) / 100 : 0;
+        c.score += !f ? -20 : f.h >= 0.12 ? 15 : f.h >= 0.05 ? 4 : -8;
+        if (Math.min(c.width ?? 0, c.height ?? 0) < 700) c.score -= 15; // baja resolución
+        checked++;
+      } catch {
+        c.score -= 30; // no se pudo descargar: se deja al final
+      }
+    }
+    if (checked) log(`Miniaturas: rostro comprobado en ${checked} fotos de «${subject}»`);
+  }
 }
 
 /** Elige foto principal y de fondo para cada diseño, sin repetir cuando hay alternativas. */
@@ -175,7 +205,9 @@ function choose(style: ThumbStyle, cands: PhotoCandidate[], a: ThumbAnalysis) {
     const p1 = pick(mainPeople, people, scenesReal, project);
     const bg1 = scenesReal[0] ?? project[0] ?? null;
     const p2 = pick(scenesReal, project, people);
-    const p3 = pick(people.filter((c) => c.subject !== p1?.subject), scenesReal, project, mainPeople);
+    // alto impacto: otra persona o el mismo protagonista solo si su rostro se ve grande; si no, un lugar o escena
+    const bigFace = (c: PhotoCandidate) => (c.face ?? 0) >= 0.1;
+    const p3 = pick(people.filter((c) => c.subject !== p1?.subject && bigFace(c)), mainPeople.filter(bigFace), scenesReal, project, mainPeople);
     return [
       { photo: p1, bg: bg1 && bg1.id !== p1?.id ? bg1 : null },
       { photo: p2, bg: null },
@@ -196,7 +228,17 @@ function resolveStyle(setting: StyleSetting, a: ThumbAnalysis): ThumbStyle {
   return setting === "noticias" || setting === "biblico" ? setting : a.style;
 }
 
-async function renderProposal(projectId: string, st: ThumbState, i: number, log: (m: string) => void) {
+/** Rostros útiles para encuadrar: personas y escenas (figuras); en lugares, solo si la cara es grande. */
+async function facesFor(c: PhotoCandidate | null, file: string | null): Promise<FaceInfo | null> {
+  if (!c || !file) return null;
+  const info = await detectFaces(file).catch(() => null);
+  const f = mainFace(info);
+  if (!f) return null;
+  if (c.role === "persona" || f.h >= 0.08) return info;
+  return null;
+}
+
+async function renderProposal(projectId: string, st: ThumbState, i: number, log: (m: string) => void, size?: { w: number; h: number; out: string }) {
   const p = st.proposals[i];
   const dir = dirOf(projectId);
   const fotos = path.join(dir, "fotos");
@@ -213,22 +255,28 @@ async function renderProposal(projectId: string, st: ThumbState, i: number, log:
   if (p.bg) bg = await ensureLocal(p.bg, fotos).catch(() => null);
   // el nombre solo se muestra si la foto es de esa persona, verificada
   const name = isPerson(p.photo) && p.photo?.subject ? p.photo.subject : null;
-  const out = path.join(dir, `miniatura-${i + 1}.jpg`);
+  const out = size?.out ?? path.join(dir, `miniatura-${i + 1}.jpg`);
+  const [photoFaces, bgFaces] = [await facesFor(p.photo, photo), await facesFor(p.bg, bg)];
+  // misma foto en otra propuesta: otro encuadre para que las tres se distingan
+  const repeated = st.proposals.slice(0, i).some((q) => q.photo && q.photo.id === p.photo?.id);
   const r = await renderThumbnail({
     design: p.design,
     style: st.style,
-    w: st.w,
-    h: st.h,
+    w: size?.w ?? st.w,
+    h: size?.h ?? st.h,
+    photoFaces,
+    bgFaces,
     headline: p.headline,
     highlight: p.highlight,
     photo,
     bg,
     tag: p.tag,
     name: p.design === "protagonista" ? name : null,
-    focusY: focusFor(p.photo),
+    focusY: repeated ? [0.15, 0.55, 0.85][i % 3] : focusFor(p.photo),
     out,
     tmpDir: path.join(dir, "tmp"),
   });
+  if (size) return; // copia a otro tamaño (portada integrada): el estado no cambia
   p.aiGenerated = p.photo?.kind === "ia" || p.bg?.kind === "ia";
   if (p.aiGenerated) tagSynthetic(out, "Contenido sintetico: la imagen de fondo es una recreacion artistica generada con IA (no es una fotografia real).");
   p.name = name;
@@ -340,8 +388,23 @@ export function generateThumbnails(o: { projectId: string; log?: (m: string) => 
       warnings.push("No se encontraron fotografías reales con licencia libre de los protagonistas o lugares: se usaron recursos del video. Puede buscar o subir otra foto en cada propuesta.");
     saveState(o.projectId, st);
     refreshCredits(o.projectId, st);
-    log(`Miniaturas: 3 propuestas de ${w}×${h} listas (${st.proposals.map((x) => `${x.label}: ${x.photo ? `${x.photo.kind === "real" ? "foto real" : x.photo.kind === "ia" ? "recreación IA" : "foto de archivo"}` : "sin foto"}`).join(" · ")})`);
+    log(`Miniaturas: 3 propuestas de ${w}×${h} listas (${st.proposals.map((x) => `${x.label}: ${x.photo ? `${x.photo.kind === "real" ? "foto real" : x.photo.kind === "ia" ? "recreación IA" : x.photo.kind === "fondo" ? "fondo de diseño" : "foto de archivo"}` : "sin foto"}`).join(" · ")})`);
     return st;
+  });
+}
+
+/**
+ * Dibuja la miniatura principal al tamaño exacto del video (portada integrada) en `out`,
+ * con el mismo diseño, titular y foto que la propuesta elegida. No modifica el estado.
+ */
+export function renderMainAt(projectId: string, w: number, h: number, out: string) {
+  return withLock(projectId, async () => {
+    const st = requireState(projectId);
+    const i = st.selected;
+    if (st.w === w && st.h === h && st.proposals[i]?.file && fs.existsSync(st.proposals[i].file)) {
+      fs.copyFileSync(st.proposals[i].file, out);
+    } else await renderProposal(projectId, st, i, () => undefined, { w, h, out });
+    return { index: i, proposal: st.proposals[i], updatedAt: st.proposals[i].updatedAt, selectedAt: st.updatedAt };
   });
 }
 

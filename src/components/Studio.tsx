@@ -7,6 +7,7 @@ import { Alert, Button, Card, CostDialog, Field, Select, Toggle, api, inputCls, 
 import { ScenesPanel } from "./ScenesPanel";
 import { SeoPanel } from "./SeoPanel";
 import { ThumbnailsPanel } from "./ThumbnailsPanel";
+import { CoverDownload } from "./CoverDownload";
 import { usePush } from "./pwa";
 import { VisualModeField, AiPlanPanel } from "./AiVisual";
 
@@ -404,9 +405,10 @@ export function Studio({ projectId: initialId }: { projectId?: string }) {
                 <div className="grid grid-cols-2 gap-2">
                   <a href={`${project.video}?descargar=1`} className="col-span-2">
                     <Button variant="gold" big className="w-full">
-                      ⬇️ Descargar video
+                      ⬇️ Descargar video original
                     </Button>
                   </a>
+                  <CoverDownload projectId={project.id} vertical={project.settings.format === "9:16"} hasThumbs={project.thumbnails.length > 0} version={project.updatedAt} />
                   {project.thumbnails[0] && (
                     <a href={`${project.thumbnails[0]}?descargar=1`}>
                       <Button variant="dark" className="w-full">

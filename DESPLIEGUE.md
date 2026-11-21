@@ -198,6 +198,19 @@ tres copias completas del video; con un volumen pequeño el disco se llenaba al 
   (obliga a atribuir al autor, cosa que la app hace en la descripción).
 * No necesita claves ni tiene costo. Con Claude configurado, el análisis del guion se incluye en la estimación del video (≈ 0,01–0,03 USD).
 * Si una miniatura usa una recreación generada con IA (estilo bíblico), al subirla a YouTube marque «contenido alterado o sintético».
+* **Rostros:** la app localiza las caras en las fotos (detector local *face-api*, gratuito, sin enviar nada fuera) para no cortarlas y
+  preferir fotos con el rostro grande. No identifica a nadie: la identidad se verifica con Wikidata.
+
+### 🖼️ Video con portada integrada (YouTube Shorts)
+
+* Junto a **«Descargar video original»** aparece **«Descargar video con portada integrada»** (elija 0,5, 0,75 o 1 s de portada).
+* Crea una **copia** (`video-con-portada.mp4`): la miniatura principal (★) al comienzo, en silencio, y después el video completo con la
+  misma voz, música y subtítulos. El original nunca se modifica. La imagen se une sin recomprimir; solo la pista de sonido se recodifica
+  (AAC) para que quede sincronizada al fotograma.
+* Si cambia la miniatura principal o la duración, la copia se rehace al pulsar el botón; si no, se reutiliza. No consume créditos de
+  ElevenLabs ni de Runway.
+* En el teléfono: suba el Short a YouTube, abra la edición de la miniatura del Short y elija el **primer fotograma** (la portada).
+  Integrarla no garantiza que YouTube la elija sola.
 
 ---
 

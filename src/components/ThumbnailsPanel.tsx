@@ -5,7 +5,7 @@ import { Alert, Button, Card, CostDialog, Modal, Select, api, inputCls, type Est
 type Photo = {
   id: string;
   source: string;
-  kind: "real" | "stock" | "ia";
+  kind: "real" | "stock" | "ia" | "fondo";
   role: string;
   subject?: string;
   verified?: string;
@@ -45,7 +45,7 @@ type State = {
   candidates: Photo[];
 };
 
-const KIND: Record<Photo["kind"], string> = { real: "Foto real verificada", stock: "Foto de archivo con licencia", ia: "Recreación generada con IA" };
+const KIND: Record<Photo["kind"], string> = { real: "Foto real verificada", stock: "Foto de archivo con licencia", ia: "Recreación generada con IA", fondo: "Fondo de diseño generado por la app" };
 const STYLE: Record<string, string> = { noticias: "Noticias y actualidad", biblico: "Bíblico cinematográfico", inteligente: "Inteligente" };
 
 function PhotoInfo({ p }: { p: Photo | null }) {
